@@ -84,6 +84,7 @@ import { useSettings } from "@/lib/api";
 import { writeClipboardText } from "@/utils/clipboard";
 import { createRandomId } from "@/utils/randomId";
 import TrafficStatsPanel from "./TrafficStatsPanel";
+import RealityProbeBox, { isLocalRealityDest } from "./RealityProbeBox";
 import {
   clearStoredRemoteGrant,
   isRemoteGrantLive,
@@ -5078,8 +5079,21 @@ export default function PlusAdminPage() {
               <>
                 <SelectField
                   label={t("nodemgt.reality_dest")}
-                  value={REALITY_DESTS.includes(sheet.form.reality_dest as (typeof REALITY_DESTS)[number]) ? sheet.form.reality_dest : "__custom"}
+                  value={
+                    REALITY_DESTS.includes(sheet.form.reality_dest as (typeof REALITY_DESTS)[number])
+                      ? sheet.form.reality_dest
+                      : isLocalRealityDest(sheet.form.reality_dest)
+                        ? "__local"
+                        : "__custom"
+                  }
                   onChange={(value) => {
+                    if (value === "__local") {
+                      const nextDest = isLocalRealityDest(sheet.form.reality_dest)
+                        ? sheet.form.reality_dest
+                        : "127.0.0.1:8443";
+                      setForm({ reality_dest: nextDest });
+                      return;
+                    }
                     if (value === "__custom") {
                       setForm({ reality_dest: "", reality_server_names: "", sni: "" });
                       return;
@@ -5088,16 +5102,28 @@ export default function PlusAdminPage() {
                   }}
                   options={[
                     ...REALITY_DESTS.map((value) => ({ value, label: value })),
+                    { value: "__local", label: "回落到本地服务（127.0.0.1）" },
                     { value: "__custom", label: t("nodemgt.custom") },
                   ]}
                   helper={t("nodemgt.reality_dest_help")}
                 />
                 {!REALITY_DESTS.includes(sheet.form.reality_dest as (typeof REALITY_DESTS)[number]) ? (
                   <Field
-                    label={t("nodemgt.reality_dest_custom")}
+                    label={isLocalRealityDest(sheet.form.reality_dest) ? "本地回落地址（如 127.0.0.1:8443）" : t("nodemgt.reality_dest_custom")}
                     value={sheet.form.reality_dest}
-                    onChange={(value) => setForm({ reality_dest: value, reality_server_names: destHost(value), sni: destHost(value) })}
-                    placeholder={DEFAULT_REALITY_DEST}
+                    onChange={(value) => {
+                      if (isLocalRealityDest(value)) {
+                        setForm({ reality_dest: value });
+                      } else {
+                        setForm({ reality_dest: value, reality_server_names: destHost(value), sni: destHost(value) });
+                      }
+                    }}
+                    placeholder={isLocalRealityDest(sheet.form.reality_dest) ? "127.0.0.1:8443" : DEFAULT_REALITY_DEST}
+                    helper={
+                      isLocalRealityDest(sheet.form.reality_dest)
+                        ? "填写本机监听 TLS 1.3 + H2 的服务地址（如 Nginx/Caddy 的 127.0.0.1:8443），不会覆盖下方 Server Names / SNI；请把 Server Names 填为本地服务证书对应的真实域名。"
+                        : undefined
+                    }
                   />
                 ) : null}
                 <TwoCol>
@@ -5121,6 +5147,11 @@ export default function PlusAdminPage() {
                     }
                   />
                 </TwoCol>
+                <RealityProbeBox
+                  nodeUUID={sheet.form.node_uuid}
+                  dest={sheet.form.reality_dest}
+                  serverName={(sheet.form.reality_server_names || "").split(",")[0]?.trim() || ""}
+                />
                 <TwoCol>
                   <SelectField
                     label={t("nodemgt.utls_fingerprint")}
