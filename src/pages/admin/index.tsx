@@ -69,7 +69,6 @@ import {
   Plus,
   Save,
   Send,
-  Terminal,
   Trash2Icon,
   XCircle,
 } from "@/components/admin/muiIcons";
@@ -151,8 +150,6 @@ import {
   toExpiryLocalDateTime,
 } from "@/lib/expiryDateTime";
 import { currencyForDisplay, currencyForStorage } from "@/lib/currency";
-import { openRemoteTerminal } from "@/utils/remoteLaunch";
-import { useRemoteManagementGate } from "@/components/admin/RemoteManagementGate";
 import { SelectOrInput } from "@/components/ui/select-or-input";
 import AdminPageTitle from "@/components/admin/AdminPageTitle";
 import ExpiryDateField from "@/components/admin/ExpiryDateField";
@@ -1455,23 +1452,12 @@ function formatSignedTraffic(value: number): string {
 
 const ActionButtons = ({ node, settings }: { node: NodeDetail, settings: any }) => {
   const { t } = useTranslation();
-  const { ensureEnabled } = useRemoteManagementGate();
   const [dialog, setDialog] = React.useState<"install" | "edit" | "billing" | "traffic" | "token" | "delete" | null>(null);
   const closeDialog = () => setDialog(null);
   return (
     <div className="flex h-10 items-center justify-start gap-1 admin-node-actions max-md:w-full">
       <IconButton variant="ghost" title={t("admin.nodeTable.installCommand")} onClick={() => setDialog("install")}>
         <Download size="18" />
-      </IconButton>
-      <IconButton
-        title={t("terminal.title")}
-        variant="ghost"
-        onClick={() => {
-          if (!ensureEnabled()) return;
-          if (!openRemoteTerminal(node.uuid)) toast.error("浏览器阻止了远程管理窗口");
-        }}
-      >
-        <Terminal size="18" />
       </IconButton>
       <IconButton variant="ghost" title={t("admin.nodeEdit.editInfo", "编辑信息")} onClick={() => setDialog("edit")}>
         <Pencil size="18" />

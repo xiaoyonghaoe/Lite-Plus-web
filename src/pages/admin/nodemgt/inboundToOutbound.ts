@@ -342,31 +342,19 @@ export type InboundFirewallUnavailable = "site_remote_off" | "agent_old" | "remo
 
 export function inboundFirewallUnavailable(
   node?: { uuid?: string; remote_protocol?: number; remote_control_enabled?: boolean; firewall?: boolean; firewall_version?: number } | null,
-  siteRemoteOn = false,
+  _siteRemoteOn = false,
 ): InboundFirewallUnavailable {
-  if (!siteRemoteOn) return "site_remote_off";
   if (!node?.uuid) return "no_node";
   if (Number(node.remote_protocol || 0) !== 2) return "agent_old";
-  if (!node.remote_control_enabled) return "remote_off";
   if (!node.firewall || Number(node.firewall_version || 0) < 1) return "agent_old";
   return "";
 }
 
 export function inboundNeedsFirewallGrant(
-  form: { firewall_allow?: string; enabled?: string; port?: string; protocol?: string; stack?: string; transport?: string },
-  existing?: { firewall_linked?: boolean; enabled?: boolean; port?: number; protocol?: string; stack?: string; transport?: string } | null,
-  nodePresent = true,
+  _form: { firewall_allow?: string; enabled?: string; port?: string; protocol?: string; stack?: string; transport?: string },
+  _existing?: { firewall_linked?: boolean; enabled?: boolean; port?: number; protocol?: string; stack?: string; transport?: string } | null,
+  _nodePresent = true,
 ) {
-  if (!nodePresent) return false;
-  const wantAllow = form.firewall_allow === "true";
-  const wasLinked = Boolean(existing?.firewall_linked);
-  if (!wantAllow) return wasLinked;
-  if (!wasLinked) return true;
-  if ((existing?.enabled !== false) !== (form.enabled !== "false")) return true;
-  if (Number(existing?.port || 0) !== Number(form.port || 0)) return true;
-  if (String(existing?.protocol || "") !== String(form.protocol || "")) return true;
-  if (String(existing?.stack || "") !== String(form.stack || "")) return true;
-  if (String(existing?.transport || "") !== String(form.transport || "")) return true;
   return false;
 }
 

@@ -1,9 +1,9 @@
 import { quotePowerShellArg, quoteShellArg, quoteShellArgs } from "./shellQuote.ts";
 
-export const LITE_AGENT_GITHUB_REPO = "nuomiiiii/Lite-Plus-agent";
-export const LITE_AGENT_DOCKER_IMAGE = "ghcr.io/nuomiiiii/lite-plus-agent:latest";
+export const LITE_AGENT_GITHUB_REPO = "xiaoyonghaoe/Lite-Plus-agent";
+export const LITE_AGENT_DOCKER_IMAGE = "ghcr.io/xiaoyonghaoe/lite-plus-agent:latest";
 export const LITE_AGENT_INSTALL_USER_AGENT =
-  "Lite-Plus-agent-install (+https://github.com/nuomiiiii/Lite-Plus-agent)";
+  "Lite-Plus-agent-install (+https://github.com/xiaoyonghaoe/Lite-Plus-agent)";
 
 export function defaultInstallGitHubProxy(
   settings?: { github_proxy?: unknown } | null,

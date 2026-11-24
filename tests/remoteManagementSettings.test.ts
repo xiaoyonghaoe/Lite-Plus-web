@@ -32,19 +32,10 @@ const locales = {
   ja: JSON.parse(readFileSync("src/i18n/locales/ja_JP.json", "utf8")),
 };
 
-test("remote management sits beside GeoIP under general settings", () => {
-  const remoteIndex = generalSource.indexOf('id="remote-management"');
-  const pageSizeIndex = generalSource.indexOf(
-    "settings.general.admin_default_page_size",
-  );
-  const geoipIndex = generalSource.indexOf("settings.geoip.title");
-  assert.ok(remoteIndex > pageSizeIndex);
-  assert.ok(geoipIndex > remoteIndex);
-  assert.match(generalSource, /navigation\.remote_management/);
-  assert.doesNotMatch(
-    generalSource.slice(geoipIndex),
-    /settings\.general\.allow_remote_management/,
-  );
+test("remote management switches are hidden from general settings", () => {
+  assert.equal(generalSource.indexOf('id="remote-management"'), -1);
+  assert.doesNotMatch(generalSource, /settings\.general\.allow_remote_management/);
+  assert.doesNotMatch(generalSource, /settings\.general\.allow_mcp/);
 });
 
 test("remote management pages stop immediately when the site switch is turned off", () => {
@@ -59,23 +50,7 @@ test("remote management pages stop immediately when the site switch is turned of
   assert.match(gateSource, /runOnVisible:\s*true/);
 });
 
-test("the remote switch writes back into settings so leaving the page keeps the new value", () => {
-  assert.match(
-    generalSource,
-    /allow_remote_management: checked[\s\S]*setSettings\(\(current\) => \(\{[\s\S]*allow_remote_management: checked/,
-  );
-});
-
-test("MCP site switch sits with remote management and writes back into settings", () => {
-  const remoteIndex = generalSource.indexOf('id="remote-management"');
-  const mcpIndex = generalSource.indexOf("settings.general.allow_mcp");
-  const geoipIndex = generalSource.indexOf("settings.geoip.title");
-  assert.ok(mcpIndex > remoteIndex);
-  assert.ok(geoipIndex > mcpIndex);
-  assert.match(
-    generalSource,
-    /allow_mcp: checked[\s\S]*setSettings\(\(current\) => \(\{[\s\S]*allow_mcp: checked/,
-  );
+test("MCP page keeps authorization and node availability messaging", () => {
   assert.doesNotMatch(mcpSource, />\{node\.uuid\}</);
   assert.match(mcpSource, /nodeDisplayIP/);
   assert.doesNotMatch(mcpSource, /SettingCardSwitch/);
@@ -229,9 +204,9 @@ test("remote management pages and launchers require the site switch", () => {
   assert.match(xtermSource, /RequireAllowRemoteManagement/);
   assert.match(terminalSource, /RequireAllowRemoteManagement/);
   assert.match(sidebarSource, /guardRemoteManagementNav/);
-  assert.match(serversSource, /ensureEnabled\(\)/);
-  assert.match(nodeDetailSource, /ensureEnabled\(\)/);
-  assert.match(nodeDetailSource, /ensureMCPEnabled\(\)/);
+  assert.doesNotMatch(serversSource, /ensureEnabled\(\)/);
+  assert.doesNotMatch(nodeDetailSource, /ensureEnabled\(\)/);
+  assert.doesNotMatch(nodeDetailSource, /ensureMCPEnabled\(\)/);
   assert.match(gateSource, /ALLOW_REMOTE_MANAGEMENT_SETTING_PATH/);
   assert.match(gateSource, /ensureMCPEnabled/);
   assert.doesNotMatch(
@@ -259,7 +234,7 @@ test("site remote-management helper treats only true as enabled", () => {
   assert.equal(isRemoteManagementPath("/admin/exec"), true);
   assert.equal(isRemoteManagementPath("/admin/remote-management/schedules"), true);
   assert.equal(isRemoteManagementPath("/admin/remote-management/schedules/task-1"), true);
-  assert.equal(isRemoteManagementPath("/admin/remote-management/firewall"), true);
+  assert.equal(isRemoteManagementPath("/admin/remote-management/firewall"), false);
   assert.equal(isRemoteManagementPath("/admin/settings/xtermjs"), true);
   assert.equal(isRemoteManagementPath("/terminal"), true);
   assert.equal(isRemoteManagementPath("/admin/servers"), false);

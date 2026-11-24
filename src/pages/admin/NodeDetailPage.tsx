@@ -38,7 +38,6 @@ import {
   HardDrive,
   Info,
   MemoryStick,
-  Network,
   RefreshCw,
   Server,
   Settings,
@@ -68,8 +67,6 @@ import {
   isEmptyValue,
 } from "@/pages/admin/nodeDetailPreview";
 import { getRegionCode, getRegionDisplayName } from "@/utils/regionHelper";
-import { openRemoteTerminal } from "@/utils/remoteLaunch";
-import { useRemoteManagementGate } from "@/components/admin/RemoteManagementGate";
 import { nodeTrafficType, trafficUsed } from "@/utils/trafficAccounting";
 import { formatBytes, isNegativeByteInput, stringToBytes } from "@/utils/unitHelper";
 import { billingSaveFailedToast } from "@/utils/billingI18n";
@@ -144,32 +141,6 @@ function DetailSectionHeader({
     </Stack>
   );
 }
-
-const solidButtonSx = {
-  textTransform: "none" as const,
-  bgcolor: LITE_BLUE_SOFT_STRONG,
-  color: LITE_BLUE,
-  minHeight: 36,
-  height: 36,
-  px: 1.5,
-  py: 0,
-  fontSize: 13.5,
-  fontWeight: 600,
-  borderRadius: "8px",
-  boxShadow: "none",
-  "&:hover": {
-    bgcolor: LITE_BLUE_SOFT_STRONG,
-    boxShadow: "none",
-    filter: "brightness(0.96)",
-  },
-  "html.dark &": {
-    bgcolor: "rgba(7, 141, 238, 0.22)",
-    color: "#7EC8F8",
-    "&:hover": { bgcolor: "rgba(7, 141, 238, 0.32)", boxShadow: "none", filter: "none" },
-  },
-  "& .MuiButton-startIcon": { mr: 0.75, ml: 0 },
-  "& .MuiButton-endIcon": { ml: 0.5, mr: 0 },
-};
 
 function cycleLabel(days: number, t: (key: string, fallback: string) => string) {
   if (days === 30) return t("admin.nodeDetail.payMonthly", "月付");
@@ -522,7 +493,6 @@ export default function NodeDetailPage() {
 function NodeDetailPageBody() {
   const { uuid = "" } = useParams();
   const { t } = useTranslation();
-  const { ensureEnabled, ensureMCPEnabled } = useRemoteManagementGate();
   const { nodeDetail, isLoading, refresh } = useNodeDetails();
   const { liveData, available } = useAdminNodeLiveData();
   const [tab, setTab] = useAdminTabParam(DETAIL_TABS, "overview");
@@ -579,12 +549,6 @@ function NodeDetailPageBody() {
     ? t("admin.nodeDetail.running", "正在运行")
     : t("nodeCard.offline", "离线");
   const statusPending = online === null;
-  const openTerminal = () => {
-    if (!ensureEnabled()) return;
-    if (!openRemoteTerminal(node.uuid)) {
-      toast.error("浏览器阻止了远程管理窗口");
-    }
-  };
 
   return (
     <Stack spacing={2} data-testid="admin-node-detail">
@@ -668,32 +632,6 @@ function NodeDetailPageBody() {
               </Box>
             ) : null}
           </Box>
-          <Stack spacing={1} sx={{ width: { xs: "100%", sm: 128 }, flexShrink: 0 }}>
-            <Button
-              className="km-admin-terminal-button"
-              variant="contained"
-              fullWidth
-              startIcon={<Terminal size={16} />}
-              onClick={openTerminal}
-              sx={solidButtonSx}
-            >
-              {t("terminal.title", "终端")}
-            </Button>
-            <Button
-              className="km-admin-mcp-button"
-              component={Link}
-              to={`/admin/remote-management/mcp?uuid=${encodeURIComponent(node.uuid)}&authorize=new`}
-              variant="contained"
-              fullWidth
-              startIcon={<Network size={16} />}
-              onClick={(event) => {
-                if (!ensureEnabled() || !ensureMCPEnabled()) event.preventDefault();
-              }}
-              sx={solidButtonSx}
-            >
-              {t("mcp.authorize_ai")}
-            </Button>
-          </Stack>
         </Stack>
       </Surface>
 

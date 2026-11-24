@@ -90,36 +90,9 @@
       ]
     },
     {
-      "labelKey": "navigation.remote_management",
-      "path": "/admin/remote-management",
-      "icon": "Terminal",
-      "children": [
-        {
-          "labelKey": "exec.title",
-          "path": "/admin/exec",
-          "icon": "Code"
-        },
-        {
-          "labelKey": "scheduled_exec.title",
-          "path": "/admin/remote-management/schedules",
-          "icon": "Schedule"
-        },
-        {
-          "labelKey": "firewall.title",
-          "path": "/admin/remote-management/firewall",
-          "icon": "Firewall"
-        },
-        {
-          "labelKey": "mcp.title",
-          "path": "/admin/remote-management/mcp",
-          "icon": "Hub"
-        },
-        {
-          "labelKey": "navigation.terminal_settings",
-          "path": "/admin/settings/xtermjs",
-          "icon": "Terminal"
-        }
-      ]
+      "labelKey": "firewall.title",
+      "path": "/admin/remote-management/firewall",
+      "icon": "Firewall"
     },
     {
       "labelKey": "navigation.notifications",

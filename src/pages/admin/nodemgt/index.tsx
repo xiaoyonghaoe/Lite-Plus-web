@@ -83,6 +83,7 @@ import { useVisibleInterval } from "@/hooks/useVisibleInterval";
 import { useSettings } from "@/lib/api";
 import { writeClipboardText } from "@/utils/clipboard";
 import { createRandomId } from "@/utils/randomId";
+import TrafficStatsPanel from "./TrafficStatsPanel";
 import {
   clearStoredRemoteGrant,
   isRemoteGrantLive,
@@ -587,6 +588,8 @@ function inboundForm(row?: any): FormMap {
     exclude_from_sub: "false",
     enabled: row?.enabled === false ? "false" : "true",
     firewall_allow: row?.firewall_linked ? "true" : "false",
+    firewall_allow_nodes: Array.isArray(row?.firewall_allow_nodes) ? row.firewall_allow_nodes.join(",") : "",
+    virtual_tags: Array.isArray(row?.virtual_tags) ? row.virtual_tags.join(",") : "",
   };
 }
 
@@ -1116,6 +1119,8 @@ function inboundUpsertBody(form: FormMap) {
     exclude_from_sub: false,
     enabled: form.enabled !== "false",
     firewall_allow: form.firewall_allow === "true",
+    firewall_allow_nodes: form.firewall_allow === "true" ? csvIDs(form.firewall_allow_nodes) : [],
+    virtual_tags: csvIDs(form.virtual_tags),
   };
 }
 
@@ -2948,10 +2953,23 @@ export default function PlusAdminPage() {
 
   const inboundOptions = useMemo(
     () =>
-      inbounds.map((row) => ({
-        value: row.id,
-        label: `${row.name} · ${row.protocol} :${row.port}`,
-      })),
+      inbounds.flatMap((row) => {
+        const base = {
+          value: row.id,
+          label: `${row.name} · ${row.protocol} :${row.port}`,
+        };
+        const vtags: string[] = Array.isArray(row.virtual_tags) ? row.virtual_tags : [];
+        return [
+          base,
+          ...vtags
+            .map((tag) => String(tag || "").trim())
+            .filter(Boolean)
+            .map((tag) => ({
+              value: `${row.id}#${tag}`,
+              label: `${row.name} [${tag}] · ${row.protocol} :${row.port}`,
+            })),
+        ];
+      }),
     [inbounds],
   );
   const inboundLabelById = useMemo(
@@ -3067,9 +3085,10 @@ export default function PlusAdminPage() {
   const nodeInboundOptions = useMemo(
     () =>
       inboundOptions.filter((item) => {
-        const row = inboundById.get(item.value);
+        const baseId = item.value.split("#")[0];
+        const row = inboundById.get(baseId);
         if (sheetNode && row?.node_uuid !== sheetNode) return false;
-        if (sheetKind === "route" && forwardingSourceInboundIDs.has(item.value) && item.value !== sheetInboundId) return false;
+        if (sheetKind === "route" && forwardingSourceInboundIDs.has(baseId) && item.value !== sheetInboundId) return false;
         return true;
       }),
     [forwardingSourceInboundIDs, inboundById, inboundOptions, sheetInboundId, sheetKind, sheetNode],
@@ -3543,23 +3562,11 @@ export default function PlusAdminPage() {
     }
   };
 
-  const removeRow = async (method: string, id: string, firewallGrant?: string) => {
+  const removeRow = async (method: string, id: string, _firewallGrant?: string) => {
     try {
       const params: Record<string, unknown> = { id };
       if (method === "admin:nodemgt.inbound.delete") {
-        const row = inbounds.find((item) => str(item?.id) === id);
-        const nodePresent = Boolean(inboundNodeOf(str(row?.node_uuid)));
-        const linked = nodePresent && (Boolean(row?.firewall_linked) || (sheet?.kind === "inbound" && sheet.form.id === id && sheet.form.firewall_allow === "true"));
-        if (linked) {
-          if (!firewallGrant && !isRemoteGrantLive(grantRef.current, grantExpiresAtRef.current)) {
-            fwDeleteIdRef.current = id;
-            setFwAuthPending("delete");
-            setFwAuthOpen(true);
-            return;
-          }
-          params.grant = firewallGrant || await authorizeFirewall("", "", false);
-          params.page_id = pageIDRef.current;
-        }
+        params.page_id = pageIDRef.current;
       }
       const raw = await call(method, params);
       if (method === "admin:nodemgt.inbound.delete") takeFirewallResult(raw);
@@ -3573,7 +3580,7 @@ export default function PlusAdminPage() {
     }
   };
 
-  const toggleRowEnabled = async (kind: "inbound" | "outbound" | "route" | "chain" | "subscription", row: any, enabled: boolean, firewallGrant?: string) => {
+  const toggleRowEnabled = async (kind: "inbound" | "outbound" | "route" | "chain" | "subscription", row: any, enabled: boolean, _firewallGrant?: string) => {
     const formEnabled = enabled ? "true" : "false";
     try {
       let saved: any;
@@ -3586,14 +3593,7 @@ export default function PlusAdminPage() {
               return;
             }
           }
-          if (!firewallGrant && !isRemoteGrantLive(grantRef.current, grantExpiresAtRef.current)) {
-            fwToggleRef.current = { row, enabled };
-            setFwAuthPending("toggle");
-            setFwAuthOpen(true);
-            return;
-          }
           const body: Record<string, unknown> = inboundUpsertBody({ ...inboundForm(row), enabled: formEnabled });
-          body.grant = firewallGrant || await authorizeFirewall("", "", false);
           body.page_id = pageIDRef.current;
           saved = takeFirewallResult(await call("admin:nodemgt.inbound.upsert", body));
         } else {
@@ -3906,6 +3906,9 @@ export default function PlusAdminPage() {
             loading={loading}
           />
         </Box>
+      ) : null}
+      {tab === "overview" ? (
+        <TrafficStatsPanel nodeOptions={nodeOptions} inboundOptions={inboundOptions} userOptions={userOptions} />
       ) : null}
 
       {tab === "subscriptions" ? (
@@ -4881,6 +4884,28 @@ export default function PlusAdminPage() {
                     if (next && inboundFirewallReason(sheet.form.node_uuid)) return;
                     setForm({ firewall_allow: next ? "true" : "false" });
                   }}
+                />
+                {sheet.form.firewall_allow === "true" ? (
+                  <MultiSelectField
+                    label="仅放行指定探针节点 IP（可选）"
+                    value={csvIDs(sheet.form.firewall_allow_nodes)}
+                    onChange={(value) => setForm({ firewall_allow_nodes: value.join(",") })}
+                    options={nodes
+                      .filter((n) => n.uuid !== sheet.form.node_uuid)
+                      .map((n) => {
+                        const ips = [n.ipv4, n.ipv6].filter(Boolean).join(" / ");
+                        return { value: n.uuid, label: ips ? `${n.name || n.uuid} (${ips})` : (n.name || n.uuid) };
+                      })}
+                    helper="留空表示对所有 IP 放行该端口；选择节点后仅放行所选探针的 IP，并自动拦截该端口的其他来源。"
+                    emptyLabel="放行所有 IP（不限制来源）"
+                    searchable
+                  />
+                ) : null}
+                <Field
+                  label="虚拟入站标签（可选，逗号分隔）"
+                  value={sheet.form.virtual_tags}
+                  onChange={(value) => setForm({ virtual_tags: value })}
+                  helper="例如填写 home 或 home,work。每个标签会在同端口派生独立虚拟入站（如 入站名 [home]），可在用户授权与路由规则中单独选择。"
                 />
                 <TwoCol>
                   <Field label={t("nodemgt.col_sub_sort")} value={sheet.form.sort_index} onChange={(value) => setForm({ sort_index: value })} helper={t("nodemgt.sub_sort_help")} />

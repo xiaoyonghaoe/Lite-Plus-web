@@ -80,10 +80,7 @@ const adminRoutePreloaders: Record<string, () => Promise<unknown>> = {
   "/admin/ping": loadAdminPing,
   "/admin/return-route": loadAdminReturnRoute,
   "/admin/logs": () => import("./pages/admin/log"),
-  "/admin/exec": () => import("./pages/admin/exec"),
-  "/admin/remote-management/schedules": () => import("./pages/admin/remote-management/schedules"),
   "/admin/remote-management/firewall": () => import("./pages/admin/remote-management/firewall"),
-  "/admin/remote-management/mcp": () => import("./pages/admin/remote-management/mcp"),
   "/admin/theme_managed": () => import("./pages/admin/theme_managed.tsx"),
   "/admin/theme_raw": () => import("./pages/admin/theme_raw.tsx"),
   "/admin/market/themes": () => import("./pages/admin/market/themes"),
@@ -361,15 +358,16 @@ export const routes: RouteObject[] = [
           },
           {
             path: "xtermjs",
-            element: React.createElement(
-              lazy(() => import("./pages/admin/settings/xtermjs"))
-            ),
+            element: React.createElement(Navigate, {
+              replace: true,
+              to: "/admin",
+            }),
           },
           {
             path: "mcp",
             element: React.createElement(Navigate, {
               replace: true,
-              to: "/admin/remote-management/mcp",
+              to: "/admin",
             }),
           },
           {
@@ -447,13 +445,17 @@ export const routes: RouteObject[] = [
       },
       {
         path: "exec",
-        element: React.createElement(lazy(() => import("./pages/admin/exec"))),
+        element: React.createElement(Navigate, {
+          replace: true,
+          to: "/admin",
+        }),
       },
       {
         path: "remote-management/schedules/:scheduleId?",
-        element: React.createElement(
-          lazy(() => import("./pages/admin/remote-management/schedules")),
-        ),
+        element: React.createElement(Navigate, {
+          replace: true,
+          to: "/admin",
+        }),
       },
       {
         path: "remote-management/firewall",
@@ -463,9 +465,10 @@ export const routes: RouteObject[] = [
       },
       {
         path: "remote-management/mcp",
-        element: React.createElement(
-          lazy(() => import("./pages/admin/remote-management/mcp")),
-        ),
+        element: React.createElement(Navigate, {
+          replace: true,
+          to: "/admin",
+        }),
       }
     ],
   },
@@ -485,7 +488,10 @@ export const routes: RouteObject[] = [
   },
   {
     path: "/terminal",
-    element: React.createElement(lazy(() => import("./pages/terminal"))),
+    element: React.createElement(Navigate, {
+      replace: true,
+      to: "/admin",
+    }),
   },
   {
     path: "/manage/*",

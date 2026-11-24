@@ -25,7 +25,7 @@ import {
 
 export default function GeneralSettings() {
   const { t } = useTranslation();
-  const { settings, loading, error, refetch, setSettings } = useSettings();
+  const { settings, loading, error, refetch } = useSettings();
   const [geoip_testResult, setGeoipTestResult] = React.useState<string | null>(
     null
   );
@@ -81,36 +81,6 @@ export default function GeneralSettings() {
             t,
           );
           await refetch();
-        }}
-      />
-      <SettingCardLabel>
-        <span id="remote-management">{t("navigation.remote_management")}</span>
-      </SettingCardLabel>
-      <SettingCardSwitch
-        title={t("settings.general.allow_remote_management")}
-        description={t("settings.general.allow_remote_management_description")}
-        defaultChecked={Boolean(settings.allow_remote_management)}
-        onChange={async (checked) => {
-          await updateSettingsWithToast(
-            { allow_remote_management: checked },
-            t,
-          );
-          setSettings((current) => ({
-            ...current,
-            allow_remote_management: checked,
-          }));
-        }}
-      />
-      <SettingCardSwitch
-        title={t("settings.general.allow_mcp")}
-        description={t("settings.general.allow_mcp_description")}
-        defaultChecked={Boolean(settings.allow_mcp)}
-        onChange={async (checked) => {
-          await updateSettingsWithToast({ allow_mcp: checked }, t);
-          setSettings((current) => ({
-            ...current,
-            allow_mcp: checked,
-          }));
         }}
       />
       <SettingCardLabel>

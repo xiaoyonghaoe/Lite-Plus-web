@@ -183,7 +183,7 @@ test("server details open an overview billing metrics page", () => {
   assert.match(detailSource, /admin\.nodeDetail\.config/);
   assert.match(detailSource, /NodeUsageStats/);
   assert.match(detailSource, /用量统计/);
-  assert.match(detailSource, /terminal\.title/);
+  assert.doesNotMatch(detailSource, /terminal\.title/);
   assert.doesNotMatch(detailSource, /服务器管理/);
   assert.match(detailSource, /km-admin-detail-card/);
   assert.doesNotMatch(detailSource, /traffic-calibration/);

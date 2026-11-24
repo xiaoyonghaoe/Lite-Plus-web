@@ -32,7 +32,6 @@ import AdminPageTitle from "@/components/admin/AdminPageTitle";
 import { AdminSheetTabs, AdminTabLabel } from "@/components/admin/AdminSheetTabs";
 import { SettingCard, SettingCardLabel } from "@/components/admin/SettingCard";
 import { ADMIN_LIST_ACTION_SX, ADMIN_LIST_OUTLINE_SX } from "@/components/admin/adminListLayout";
-import { RequireAllowRemoteManagement } from "@/components/admin/RemoteManagementGate";
 import { AdminMobileCardStack, AdminMobileListCard } from "@/components/admin/AdminMobileListCard";
 import Loading from "@/components/loading";
 import SettingsPageSkeleton from "@/components/admin/SettingsPageSkeleton";
@@ -279,11 +278,9 @@ function protocolsOf(protocol: FirewallProtocol): Array<"tcp" | "udp"> {
 }
 
 const FirewallPage = () => (
-  <RequireAllowRemoteManagement>
-    <AdminNodeLiveDataProvider>
-      <FirewallContent />
-    </AdminNodeLiveDataProvider>
-  </RequireAllowRemoteManagement>
+  <AdminNodeLiveDataProvider>
+    <FirewallContent />
+  </AdminNodeLiveDataProvider>
 );
 
 export default FirewallPage;
@@ -319,7 +316,7 @@ function FirewallContent() {
   const [disableOriginal, setDisableOriginal] = useState(false);
   const [busy, setBusy] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
-  const [hasGrant, setHasGrant] = useState(() => Boolean(loadStoredRemoteGrant(GRANT_SCOPE)));
+  const [, setHasGrant] = useState(() => Boolean(loadStoredRemoteGrant(GRANT_SCOPE)));
   const grantRef = useRef("");
   const grantExpiresAtRef = useRef(0);
   const pageIDRef = useRef(loadStoredRemoteGrant(GRANT_SCOPE)?.pageID || createRandomId());
@@ -338,7 +335,6 @@ function FirewallContent() {
   useEffect(() => { if (uuid) warmServiceProtection(uuid); }, [uuid]);
   const [denyConfirm, setDenyConfirm] = useState(false);
   const [sshPortConfirm, setSshPortConfirm] = useState<string | null>(null);
-  const [sshPortFieldKey, setSshPortFieldKey] = useState(0);
 
   const clearGrant = useCallback(() => {
     grantRef.current = "";
@@ -500,21 +496,19 @@ function FirewallContent() {
     return view;
   };
 
-  const saveIntent = async (next: FirewallView["intent"], password = "", otp = "", usePasskey = false) => {
+  const saveIntent = async (next: FirewallView["intent"]) => {
     if (!uuid) return;
     setBusy(true);
     try {
-      const grant = await authorize(password, otp, usePasskey);
       const data = await postJSON(`/api/admin/firewall/${encodeURIComponent(uuid)}`, "PUT", {
         uuid,
         block_ping_v4: Boolean(next.block_ping_v4 || next.block_ping_v6),
         block_ping_v6: Boolean(next.block_ping_v4 || next.block_ping_v6),
         default_deny_v4: Boolean(next.default_deny_v4 || next.default_deny_v6),
         default_deny_v6: Boolean(next.default_deny_v4 || next.default_deny_v6),
-        ssh_port: next.ssh_port || "",
+        ssh_port: "",
         omit_keep: next.omit_keep || [],
         rules: persistableRules(next.rules),
-        grant,
         page_id: pageIDRef.current,
       }) as FirewallView;
       setView(data);
@@ -539,17 +533,11 @@ function FirewallContent() {
 
   const queueSave = async (next: FirewallView["intent"]) => {
     if (!uuid) return;
-    if (isRemoteGrantLive(grantRef.current, grantExpiresAtRef.current)) {
-      try {
-        await saveIntent(next);
-      } catch (err) {
-        toast.error(firewallErrorMessage(err, t));
-      }
-      return;
+    try {
+      await saveIntent(next);
+    } catch (err) {
+      toast.error(firewallErrorMessage(err, t));
     }
-    setPendingInstall(false);
-    setPendingSave(next);
-    setAuthOpen(true);
   };
 
   const installNftables = async (password = "", otp = "", usePasskey = false) => {
@@ -581,40 +569,15 @@ function FirewallContent() {
     }
   };
 
-  const queueInstall = async () => {
-    if (!uuid) return;
-    if (isRemoteGrantLive(grantRef.current, grantExpiresAtRef.current)) {
-      try {
-        await installNftables();
-      } catch (err) {
-        toast.error(firewallErrorMessage(err, t));
-      }
-      return;
-    }
-    setPendingSave(null);
-    setPendingInstall(true);
-    setPendingProtection(false);
-    setAuthOpen(true);
-  };
+  void (async () => { /* online nftables install removed */ });
 
   const queueProtection = async (run: (grant: string) => Promise<void>) => {
     if (!uuid) return;
-    if (isRemoteGrantLive(grantRef.current, grantExpiresAtRef.current)) {
-      const grant = grantRef.current;
-      grantRef.current = "";
-      setHasGrant(false);
-      try {
-        await run(grant);
-      } catch (err) {
-        toast.error(firewallErrorMessage(err, t));
-      }
-      return;
+    try {
+      await run("");
+    } catch (err) {
+      toast.error(firewallErrorMessage(err, t));
     }
-    protectionRunRef.current = run;
-    setPendingSave(null);
-    setPendingInstall(false);
-    setPendingProtection(true);
-    setAuthOpen(true);
   };
 
   const readOnly = Boolean(view?.unavailable);
@@ -685,7 +648,7 @@ function FirewallContent() {
     }
   };
 
-  const upsertRule = async (form: RuleForm, existing: FirewallRule | undefined, password: string, otp: string, usePasskey: boolean) => {
+  const upsertRule = async (form: RuleForm, existing: FirewallRule | undefined, _password: string, _otp: string, _usePasskey: boolean) => {
     if (!view || (existing && isKeepRule(existing))) return;
     const expanded = protocolsOf(form.protocol).map((protocol, index) => ({
       id: index === 0 ? existing?.id || "" : "",
@@ -706,7 +669,7 @@ function FirewallContent() {
       return;
     }
     const nextRules = replaceRulesAt(rules, existing, expanded);
-    await saveIntent({ ...view.intent, rules: nextRules }, password, otp, usePasskey);
+    await saveIntent({ ...view.intent, rules: nextRules });
     setEditing(null);
   };
 
@@ -787,16 +750,14 @@ function FirewallContent() {
     }
   };
 
-  const adopt = async (usePasskey = false) => {
+  const adopt = async () => {
     if (!uuid || selectedHost.length === 0) return;
     setBusy(true);
     try {
-      const grant = await authorize(authPassword, authOtp, usePasskey);
       const data = await postJSON(`/api/admin/firewall/${encodeURIComponent(uuid)}/adopt`, "POST", {
         uuid,
         keys: selectedHost,
         disable_original: disableOriginal,
-        grant,
         page_id: pageIDRef.current,
       }) as FirewallView;
       setView(data);
@@ -865,11 +826,63 @@ function FirewallContent() {
   const pingOn = Boolean(view?.intent.block_ping_v4 || view?.intent.block_ping_v6);
   const denyOn = Boolean(view?.intent.default_deny_v4 || view?.intent.default_deny_v6);
   const denyBlocked = Boolean(view?.snapshot?.default_deny_blocked);
-  const sshPort = String(
-    view?.delivery_status === "applied"
-      ? view?.intent.ssh_port || view?.snapshot?.ssh_port || "22"
-      : view?.snapshot?.ssh_port || view?.intent.ssh_port || "22",
-  ).trim() || "22";
+  const sshPort = String(view?.snapshot?.ssh_port || "22").trim() || "22";
+  const sshKeepKey = `tcp:${sshPort}`;
+  const isSshBlockRule = (rule: FirewallRule) =>
+    rule.action === "deny" &&
+    rule.protocol === "tcp" &&
+    String(rule.port || "").trim() === sshPort &&
+    String(rule.comment || "").trim() === "block-ssh";
+  const sshClosed = Boolean(
+    view?.intent.rules?.some((rule) => rule.enabled && isSshBlockRule(rule)),
+  );
+  const toggleSshClosed = (close: boolean) => {
+    if (!view) return;
+    const baseRules = persistableRules(view.intent.rules).filter((rule) => !isSshBlockRule(rule));
+    const baseOmit = (view.intent.omit_keep || []).filter((k) => k !== sshKeepKey);
+    if (close) {
+      const nextRules: FirewallRule[] = [
+        ...baseRules,
+        {
+          id: "",
+          enabled: true,
+          action: "deny",
+          protocol: "tcp",
+          port: sshPort,
+          source: "",
+          stack: "v4",
+          comment: "block-ssh",
+          origin: "web",
+          priority: 10,
+        },
+        {
+          id: "",
+          enabled: true,
+          action: "deny",
+          protocol: "tcp",
+          port: sshPort,
+          source: "",
+          stack: "v6",
+          comment: "block-ssh",
+          origin: "web",
+          priority: 10,
+        },
+      ];
+      void queueSave({
+        ...view.intent,
+        ssh_port: "",
+        omit_keep: [...baseOmit, sshKeepKey],
+        rules: nextRules,
+      });
+      return;
+    }
+    void queueSave({
+      ...view.intent,
+      ssh_port: "",
+      omit_keep: baseOmit,
+      rules: baseRules,
+    });
+  };
 
   return (
     <div
@@ -990,21 +1003,9 @@ function FirewallContent() {
           >
             <Box sx={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center" }}>
               <Callout.Text>
-                {view?.snapshot?.can_install_nftables
-                  ? t("firewall.install_nftables_help")
-                  : t("firewall.install_nftables_missing")}
+                {t("firewall.install_nftables_missing")}
               </Callout.Text>
             </Box>
-            {view?.snapshot?.can_install_nftables ? (
-              <MuiButton
-                variant="contained"
-                disabled={busy || readOnly}
-                onClick={() => void queueInstall()}
-                sx={{ ml: "auto", flexShrink: 0, whiteSpace: "nowrap" }}
-              >
-                {t("firewall.install_nftables")}
-              </MuiButton>
-            ) : null}
           </Stack>
         </Callout.Root>
       ) : null}
@@ -1042,14 +1043,16 @@ function FirewallContent() {
                 void queueSave({ ...view.intent, default_deny_v4: false, default_deny_v6: false });
               }}
             />
-            <FirewallPolicyPort
-              key={sshPortFieldKey}
-              title={t("firewall.ssh_port")}
-              value={sshPort}
+            <FirewallPolicySwitch
+              title={`关闭 SSH (${sshPort})`}
+              checked={sshClosed}
               disabled={readOnly || busy}
-              onCommit={(next) => {
-                if (next === sshPort) return;
-                setSshPortConfirm(next);
+              onChange={(next) => {
+                if (next) {
+                  setSshPortConfirm(sshPort);
+                  return;
+                }
+                toggleSshClosed(false);
               }}
             />
           </Stack>
@@ -1246,7 +1249,7 @@ function FirewallContent() {
         open={editing !== null}
         stack={stackView}
         rule={editing && editing !== "new" ? editing : null}
-        hasGrant={hasGrant}
+        hasGrant={true}
         twoFaEnabled={twoFaEnabled}
         passkeyAvailable={passkeyAvailable}
         onClose={() => setEditing(null)}
@@ -1323,35 +1326,12 @@ function FirewallContent() {
             <Checkbox checked={disableOriginal} onCheckedChange={(checked) => setDisableOriginal(Boolean(checked))} />
             <Typography sx={{ fontSize: 13.5 }}>{t("firewall.disable_original")}</Typography>
           </Box>
-          <MuiTextField
-            size="small"
-            fullWidth
-            sx={{ mt: 1.5 }}
-            type={twoFaEnabled ? "text" : "password"}
-            label={hasGrant ? t("scheduled_exec.grant_ready") : twoFaEnabled ? t("admin.nodeTable.twoFactorCode") : t("login.password")}
-            value={twoFaEnabled ? authOtp : authPassword}
-            onChange={(event) => {
-              if (twoFaEnabled) setAuthOtp(event.target.value.replace(/\D/g, "").slice(0, 6));
-              else setAuthPassword(event.target.value);
-            }}
-          />
           <Flex justify="end" gap="2" className="mt-4">
             <MuiButton onClick={() => setImportHost(false)}>{t("common.cancel")}</MuiButton>
-            {passkeyAvailable && !hasGrant ? (
-              <MuiButton
-                variant="outlined"
-                disabled={busy || selectedHost.length === 0}
-                onClick={() => void adopt(true).catch((err) => {
-                  toast.error(firewallErrorMessage(err, t));
-                })}
-              >
-                {t("login.passkey")}
-              </MuiButton>
-            ) : null}
             <MuiButton
               variant="contained"
-              disabled={busy || selectedHost.length === 0 || (!hasGrant && (twoFaEnabled ? !authOtp.trim() : !authPassword.trim()))}
-              onClick={() => void adopt(false)}
+              disabled={busy || selectedHost.length === 0}
+              onClick={() => void adopt()}
             >
               {t("firewall.adopt")}
             </MuiButton>
@@ -1361,23 +1341,21 @@ function FirewallContent() {
       <Dialog.Root mobileSheet open={sshPortConfirm !== null} onOpenChange={(next: boolean) => {
         if (!next) {
           setSshPortConfirm(null);
-          setSshPortFieldKey((key) => key + 1);
         }
       }}>
-        <AppDialogContent title={t("firewall.ssh_port_confirm_title")} description={t("firewall.ssh_port_confirm_help")}>
+        <AppDialogContent
+          title={`关闭 SSH 端口 (${sshPortConfirm || sshPort})`}
+          description={`将通过防火墙封禁 TCP ${sshPortConfirm || sshPort} 端口并移除自动放行规则，关闭后无法通过 SSH 连接本机，确认继续？`}
+        >
           <Flex justify="end" gap="2" className="mt-4">
-            <MuiButton onClick={() => {
-              setSshPortConfirm(null);
-              setSshPortFieldKey((key) => key + 1);
-            }}>{t("common.cancel")}</MuiButton>
+            <MuiButton onClick={() => setSshPortConfirm(null)}>{t("common.cancel")}</MuiButton>
             <MuiButton
               color="error"
               variant="contained"
               disabled={busy || !view || !sshPortConfirm}
               onClick={() => {
-                const next = sshPortConfirm;
                 setSshPortConfirm(null);
-                if (view && next) void queueSave({ ...view.intent, ssh_port: next });
+                toggleSshClosed(true);
               }}
             >
               {t("common.confirm")}
@@ -1436,7 +1414,7 @@ function FirewallContent() {
                     : pendingInstall
                     ? installNftables("", "", true)
                     : pendingSave
-                      ? saveIntent(pendingSave, "", "", true)
+                      ? saveIntent(pendingSave)
                       : Promise.resolve();
                   void run.catch((err) => {
                     toast.error(firewallErrorMessage(err, t));
@@ -1461,7 +1439,7 @@ function FirewallContent() {
                   : pendingInstall
                   ? installNftables(authPassword, authOtp, false)
                   : pendingSave
-                    ? saveIntent(pendingSave, authPassword, authOtp, false)
+                    ? saveIntent(pendingSave)
                     : Promise.resolve();
                 void run.catch((err) => {
                   toast.error(firewallErrorMessage(err, t));
@@ -1601,18 +1579,20 @@ function RuleDialog({
           <Typography sx={{ fontSize: 13.5 }}>{t("firewall.enabled")}</Typography>
           <Switch checked={form.enabled} onCheckedChange={(enabled) => setForm({ ...form, enabled })} />
         </Box>
-        <MuiTextField
-          size="small"
-          fullWidth
-          sx={{ mt: 1.5 }}
-          type={twoFaEnabled ? "text" : "password"}
-          label={hasGrant ? t("scheduled_exec.grant_ready") : twoFaEnabled ? t("admin.nodeTable.twoFactorCode") : t("login.password")}
-          value={twoFaEnabled ? otp : password}
-          onChange={(event) => {
-            if (twoFaEnabled) setOtp(event.target.value.replace(/\D/g, "").slice(0, 6));
-            else setPassword(event.target.value);
-          }}
-        />
+        {!hasGrant ? (
+          <MuiTextField
+            size="small"
+            fullWidth
+            sx={{ mt: 1.5 }}
+            type={twoFaEnabled ? "text" : "password"}
+            label={twoFaEnabled ? t("admin.nodeTable.twoFactorCode") : t("login.password")}
+            value={twoFaEnabled ? otp : password}
+            onChange={(event) => {
+              if (twoFaEnabled) setOtp(event.target.value.replace(/\D/g, "").slice(0, 6));
+              else setPassword(event.target.value);
+            }}
+          />
+        ) : null}
         <Flex justify="end" gap="2" className="mt-4">
           <MuiButton onClick={onClose}>{t("common.cancel")}</MuiButton>
           <MuiButton variant="contained" disabled={saving} onClick={() => void submit(false)}>{t("common.save")}</MuiButton>
@@ -1645,59 +1625,6 @@ function FirewallPolicySwitch({
           onChange={(_, next) => onChange(next)}
           color="primary"
           slotProps={{ input: { "aria-label": title } }}
-        />
-      </SettingCard.Action>
-    </SettingCard>
-  );
-}
-
-function FirewallPolicyPort({
-  title,
-  value,
-  disabled,
-  onCommit,
-}: {
-  title: string;
-  value: string;
-  disabled?: boolean;
-  onCommit: (next: string) => void;
-}) {
-  const { t } = useTranslation();
-  const [draft, setDraft] = useState(value);
-  useEffect(() => {
-    setDraft(value);
-  }, [value]);
-  const commit = () => {
-    const next = draft.trim();
-    if (next === value) return;
-    const port = Number(next);
-    if (!Number.isInteger(port) || port < 1 || port > 65535) {
-      toast.error(t("firewall.errors.ssh_port"));
-      setDraft(value);
-      return;
-    }
-    onCommit(String(port));
-  };
-  return (
-    <SettingCard title={title} className="w-auto">
-      <SettingCard.Action>
-        <MuiTextField
-          size="small"
-          value={draft}
-          disabled={disabled}
-          onChange={(event) => setDraft(event.target.value.replace(/\D/g, "").slice(0, 5))}
-          onBlur={commit}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              (event.target as HTMLInputElement).blur();
-            }
-          }}
-          slotProps={{ htmlInput: { inputMode: "numeric", "aria-label": title } }}
-          sx={{
-            width: 72,
-            "& .MuiOutlinedInput-input": { padding: "6px 8px", textAlign: "center", fontSize: 14 },
-          }}
         />
       </SettingCard.Action>
     </SettingCard>

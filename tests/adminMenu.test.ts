@@ -61,7 +61,7 @@ test("keeps the admin navigation in the intended groups", () => {
       "/admin/notification/center",
       "/admin/monitoring",
       "/admin/nodemgt",
-      "/admin/remote-management",
+      "/admin/remote-management/firewall",
       "/admin/notifications",
       "/admin/appearance",
       "/admin/settings",
@@ -122,27 +122,17 @@ test("keeps the admin navigation in the intended groups", () => {
     ],
   );
 
-  const remoteManagement = menuConfig.menu.find(
-    (item) => item.path === "/admin/remote-management",
+  const firewall = menuConfig.menu.find(
+    (item) => item.path === "/admin/remote-management/firewall",
   );
-  assert.deepEqual(
-    remoteManagement?.children?.map((item) => item.path),
-    [
-      "/admin/exec",
-      "/admin/remote-management/schedules",
-      "/admin/remote-management/firewall",
-      "/admin/remote-management/mcp",
-      "/admin/settings/xtermjs",
-    ],
-  );
-  assert.equal(
-    remoteManagement?.children?.some((item) => item.path === "/admin/terminal"),
-    false,
-  );
-  assert.equal(
-    remoteManagement?.children?.find((item) => item.path === "/admin/remote-management/firewall")?.icon,
-    "Firewall",
-  );
+  assert.equal(firewall?.icon, "Firewall");
+  assert.equal(firewall?.children, undefined);
+  assert.equal(paths.includes("/admin/remote-management"), false);
+  assert.equal(paths.includes("/admin/exec"), false);
+  assert.equal(paths.includes("/admin/remote-management/schedules"), false);
+  assert.equal(paths.includes("/admin/remote-management/mcp"), false);
+  assert.equal(paths.includes("/admin/settings/xtermjs"), false);
+  assert.equal(paths.includes("/admin/terminal"), false);
 
   assert.deepEqual(
     menuConfig.footer.map((item) => item.path),
