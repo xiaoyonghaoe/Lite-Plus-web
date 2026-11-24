@@ -5078,56 +5078,48 @@ export default function PlusAdminPage() {
             {sheet.form.security === "reality" ? (
               <>
                 <SelectField
-                  label={t("nodemgt.reality_dest")}
-                  value={
-                    REALITY_DESTS.includes(sheet.form.reality_dest as (typeof REALITY_DESTS)[number])
-                      ? sheet.form.reality_dest
-                      : isLocalRealityDest(sheet.form.reality_dest)
-                        ? "__local"
-                        : "__custom"
-                  }
-                  onChange={(value) => {
-                    if (value === "__local") {
-                      const nextDest = isLocalRealityDest(sheet.form.reality_dest)
-                        ? sheet.form.reality_dest
-                        : "127.0.0.1:8443";
-                      setForm({ reality_dest: nextDest });
-                      return;
-                    }
-                    if (value === "__custom") {
-                      setForm({ reality_dest: "", reality_server_names: "", sni: "" });
-                      return;
-                    }
-                    setForm({ reality_dest: value, reality_server_names: destHost(value), sni: destHost(value) });
-                  }}
-                  options={[
-                    ...REALITY_DESTS.map((value) => ({ value, label: value })),
-                    { value: "__local", label: "回落到本地服务（127.0.0.1）" },
-                    { value: "__custom", label: t("nodemgt.custom") },
-                  ]}
-                  helper={t("nodemgt.reality_dest_help")}
+                  label={t("nodemgt.utls_fingerprint")}
+                  value={sheet.form.fingerprint || DEFAULT_FINGERPRINT}
+                  onChange={(value) => setForm({ fingerprint: value })}
+                  options={FINGERPRINTS.map((value) => ({ value, label: value }))}
                 />
-                {!REALITY_DESTS.includes(sheet.form.reality_dest as (typeof REALITY_DESTS)[number]) ? (
-                  <Field
-                    label={isLocalRealityDest(sheet.form.reality_dest) ? "本地回落地址（如 127.0.0.1:8443）" : t("nodemgt.reality_dest_custom")}
-                    value={sheet.form.reality_dest}
-                    onChange={(value) => {
-                      if (isLocalRealityDest(value)) {
-                        setForm({ reality_dest: value });
+                <RealityProbeBox
+                  nodeUUID={sheet.form.node_uuid}
+                  dest={sheet.form.reality_dest}
+                  serverName={(sheet.form.reality_server_names || "").split(",")[0]?.trim() || ""}
+                  presets={REALITY_DESTS}
+                  onDestChange={(value) => {
+                    if (isLocalRealityDest(value)) {
+                      setForm({ reality_dest: value });
+                    } else {
+                      const prevHost = destHost(sheet.form.reality_dest);
+                      const curSNI = (sheet.form.reality_server_names || "").trim();
+                      const nextHost = destHost(value);
+                      if (!curSNI || curSNI === prevHost) {
+                        setForm({ reality_dest: value, reality_server_names: nextHost, sni: nextHost });
                       } else {
-                        setForm({ reality_dest: value, reality_server_names: destHost(value), sni: destHost(value) });
+                        setForm({ reality_dest: value });
                       }
-                    }}
-                    placeholder={isLocalRealityDest(sheet.form.reality_dest) ? "127.0.0.1:8443" : DEFAULT_REALITY_DEST}
-                    helper={
-                      isLocalRealityDest(sheet.form.reality_dest)
-                        ? "填写本机监听 TLS 1.3 + H2 的服务地址（如 Nginx/Caddy 的 127.0.0.1:8443），不会覆盖下方 Server Names / SNI；请把 Server Names 填为本地服务证书对应的真实域名。"
-                        : undefined
                     }
-                  />
-                ) : null}
+                  }}
+                  onSelectPreset={(presetDest, host) => {
+                    setForm({ reality_dest: presetDest, reality_server_names: host, sni: host });
+                  }}
+                  onSelectLocalFallback={(localDest) => {
+                    setForm({ reality_dest: localDest });
+                  }}
+                  onFillSNI={(domain) => {
+                    setForm({ reality_server_names: domain, sni: domain });
+                  }}
+                />
+                <Field
+                  label="SNI (Server Names)"
+                  value={sheet.form.reality_server_names}
+                  onChange={(value) => setForm({ reality_server_names: value, sni: value.split(",")[0].trim() || value })}
+                  placeholder="example.com（多个用逗号分隔）"
+                  helper={t("nodemgt.reality_sni_help")}
+                />
                 <TwoCol>
-                  <Field label={t("nodemgt.reality_server_names")} value={sheet.form.reality_server_names} onChange={(value) => setForm({ reality_server_names: value, sni: value.split(",")[0].trim() || value })} helper={t("nodemgt.reality_sni_help")} />
                   <Field
                     label={t("nodemgt.reality_short_id")}
                     value={sheet.form.reality_short_id}
@@ -5145,19 +5137,6 @@ export default function PlusAdminPage() {
                         </IconButton>
                       </InputAdornment>
                     }
-                  />
-                </TwoCol>
-                <RealityProbeBox
-                  nodeUUID={sheet.form.node_uuid}
-                  dest={sheet.form.reality_dest}
-                  serverName={(sheet.form.reality_server_names || "").split(",")[0]?.trim() || ""}
-                />
-                <TwoCol>
-                  <SelectField
-                    label={t("nodemgt.utls_fingerprint")}
-                    value={sheet.form.fingerprint || DEFAULT_FINGERPRINT}
-                    onChange={(value) => setForm({ fingerprint: value })}
-                    options={FINGERPRINTS.map((value) => ({ value, label: value }))}
                   />
                   <Field label={t("nodemgt.spider_x")} value={sheet.form.spider_x} onChange={(value) => setForm({ spider_x: value })} placeholder="/" />
                 </TwoCol>
