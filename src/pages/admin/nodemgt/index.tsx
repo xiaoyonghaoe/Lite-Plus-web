@@ -784,7 +784,7 @@ function subscriptionForm(row?: any): FormMap {
     id: str(row?.id),
     user_id: str(row?.user_id),
     format: str(row?.format, "xray"),
-    auto_detect: row?.auto_detect === true || row?.auto_detect === "true" ? "true" : "false",
+    auto_detect: row ? (row?.auto_detect === true || row?.auto_detect === "true" ? "true" : "false") : "true",
     extra_urls: str(row?.extra_urls),
     token: str(row?.token),
     path: str(row?.path),
@@ -3690,6 +3690,12 @@ export default function PlusAdminPage() {
     return `${scheme}${withPort}${path}`;
   };
 
+  const sharePageURL = (raw: string) => {
+    if (!raw) return "";
+    const base = raw.split("?")[0];
+    return `${base}?view=share`;
+  };
+
   const copySubURL = async (row: any) => {
     const url = subURL(row);
     if (!url) {
@@ -4638,6 +4644,17 @@ export default function PlusAdminPage() {
                       <IconButton size="small" aria-label={t("nodemgt.copy_link")} title={t("nodemgt.copy_link")} onClick={() => void copySubURL(row)}>
                         <Copy size={16} />
                       </IconButton>
+                      <IconButton
+                        size="small"
+                        aria-label="打开分享订阅页"
+                        title="打开分享订阅页（含流量与节点协议）"
+                        onClick={() => {
+                          const url = sharePageURL(subURL(row));
+                          if (url) window.open(url, "_blank", "noopener,noreferrer");
+                        }}
+                      >
+                        <Globe size={16} />
+                      </IconButton>
                       <IconButton size="small" aria-label={t("nodemgt.preview")} title={t("nodemgt.preview")} onClick={() => void previewSub(row.id)}>
                         <QrCode size={16} />
                       </IconButton>
@@ -4883,44 +4900,66 @@ export default function PlusAdminPage() {
                     />
                   </TwoCol>
                 ) : null}
-                <SheetSwitch
-                  title={t("nodemgt.firewall_allow")}
-                  description={t("nodemgt.firewall_allow_help")}
-                  checked={sheet.form.firewall_allow === "true"}
-                  disabled={Boolean(inboundFirewallReason(sheet.form.node_uuid)) && sheet.form.firewall_allow !== "true"}
-                  onChange={(next) => {
-                    if (next && inboundFirewallReason(sheet.form.node_uuid)) return;
-                    setForm({ firewall_allow: next ? "true" : "false" });
+                <Box
+                  sx={{
+                    p: 1.75,
+                    borderRadius: 2,
+                    border: "1px solid",
+                    borderColor: "divider",
+                    bgcolor: "action.hover",
                   }}
-                />
-                {sheet.form.firewall_allow === "true" ? (
-                  <MultiSelectField
-                    label="仅放行指定探针节点 IP（可选）"
-                    value={csvIDs(sheet.form.firewall_allow_nodes)}
-                    onChange={(value) => setForm({ firewall_allow_nodes: value.join(",") })}
-                    options={nodes
-                      .filter((n) => n.uuid !== sheet.form.node_uuid)
-                      .map((n) => {
-                        const ips = [n.ipv4, n.ipv6].filter(Boolean).join(" / ");
-                        return { value: n.uuid, label: ips ? `${n.name || n.uuid} (${ips})` : (n.name || n.uuid) };
-                      })}
-                    helper="留空表示对所有 IP 放行该端口；选择节点后仅放行所选探针的 IP，并自动拦截该端口的其他来源。"
-                    emptyLabel="放行所有 IP（不限制来源）"
-                    searchable
-                  />
-                ) : null}
+                >
+                  <Stack spacing={1.5}>
+                    <SheetSwitch
+                      title={t("nodemgt.firewall_allow")}
+                      description={t("nodemgt.firewall_allow_help")}
+                      checked={sheet.form.firewall_allow === "true"}
+                      disabled={Boolean(inboundFirewallReason(sheet.form.node_uuid)) && sheet.form.firewall_allow !== "true"}
+                      onChange={(next) => {
+                        if (next && inboundFirewallReason(sheet.form.node_uuid)) return;
+                        setForm({ firewall_allow: next ? "true" : "false" });
+                      }}
+                    />
+                    {sheet.form.firewall_allow === "true" ? (
+                      <TwoCol>
+                        <MultiSelectField
+                          label="仅放行指定探针节点 IP（可选）"
+                          value={csvIDs(sheet.form.firewall_allow_nodes)}
+                          onChange={(value) => setForm({ firewall_allow_nodes: value.join(",") })}
+                          options={nodes
+                            .filter((n) => n.uuid !== sheet.form.node_uuid)
+                            .map((n) => {
+                              const ips = [n.ipv4, n.ipv6].filter(Boolean).join(" / ");
+                              return { value: n.uuid, label: ips ? `${n.name || n.uuid} (${ips})` : (n.name || n.uuid) };
+                            })}
+                          helper="留空放行所有 IP；选择节点后仅放行所选探针 IP 并拦截其他来源。"
+                          emptyLabel="放行所有 IP（不限制来源）"
+                          searchable
+                        />
+                        <Field
+                          label="单 IP 最大同时连接数（TCP）"
+                          type="number"
+                          value={sheet.form.max_conns_per_ip}
+                          onChange={(value) => setForm({ max_conns_per_ip: value })}
+                          helper="通过 nftables 动态防护限制单 IP TCP 并发数，默认 50，填 0 不限制（不拦截 UDP）。"
+                        />
+                      </TwoCol>
+                    ) : (
+                      <Field
+                        label="单 IP 最大同时连接数（TCP）"
+                        type="number"
+                        value={sheet.form.max_conns_per_ip}
+                        onChange={(value) => setForm({ max_conns_per_ip: value })}
+                        helper="通过 nftables 动态防护限制单 IP TCP 并发数，默认 50，填 0 不限制（不拦截 UDP）。"
+                      />
+                    )}
+                  </Stack>
+                </Box>
                 <Field
                   label="虚拟入站标签（可选，逗号分隔）"
                   value={sheet.form.virtual_tags}
                   onChange={(value) => setForm({ virtual_tags: value })}
                   helper="例如填写 home 或 home,work。每个标签会在同端口派生独立虚拟入站（如 入站名 [home]），可在用户授权与路由规则中单独选择。"
-                />
-                <Field
-                  label="单 IP 最大同时连接数（TCP）"
-                  type="number"
-                  value={sheet.form.max_conns_per_ip}
-                  onChange={(value) => setForm({ max_conns_per_ip: value })}
-                  helper="通过节点防火墙动态防护（nftables）限制单 IP 到该端口的 TCP 并发连接数，默认 50，填 0 表示不限制（不拦截 UDP）。"
                 />
                 <TwoCol>
                   <Field label={t("nodemgt.col_sub_sort")} value={sheet.form.sort_index} onChange={(value) => setForm({ sort_index: value })} helper={t("nodemgt.sub_sort_help")} />
@@ -5903,6 +5942,31 @@ export default function PlusAdminPage() {
             <MenuItem value="default">{t("nodemgt.tpl_default")}</MenuItem>
             {[...TEMPLATE_CLIENTS, "v2ray"].map((value) => <MenuItem key={value} value={value}>{value}</MenuItem>)}
           </TextField>
+          {preview.url ? (
+            <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap" }}>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<Globe size={14} />}
+                onClick={() => window.open(sharePageURL(preview.url), "_blank", "noopener,noreferrer")}
+              >
+                打开分享订阅页
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<Copy size={14} />}
+                onClick={() => {
+                  void writeClipboardText(sharePageURL(preview.url)).then(
+                    () => toast.success("已复制分享订阅页链接"),
+                    () => toast.error(t("nodemgt.copy_failed")),
+                  );
+                }}
+              >
+                复制分享页链接
+              </Button>
+            </Stack>
+          ) : null}
           <SubPreviewBody preview={preview} />
         </Stack> : null}
       </SettingsSheetDialog>
