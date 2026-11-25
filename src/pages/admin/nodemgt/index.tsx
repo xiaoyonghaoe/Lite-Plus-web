@@ -365,6 +365,15 @@ const emptySubCfg = {
   sub_reuse_https: false,
   sub_publish_name: false,
   sub_publish_userinfo: false,
+  cf_kv_enabled: false,
+  cf_kv_account_id: "",
+  cf_kv_namespace_id: "",
+  cf_kv_api_token: "",
+  cf_kv_public_domain: "",
+  cf_kv_sub_prefix: "",
+  cf_kv_traffic_threshold_mb: "10",
+  cf_kv_max_stale_minutes: "60",
+  cf_kv_delete_removed: true,
 };
 
 function settingOn(value: unknown) {
@@ -383,6 +392,15 @@ function subCfgFromSettings(settingRow?: Record<string, any> | null) {
     sub_reuse_https: reuse,
     sub_publish_name: settingOn(settingRow?.sub_publish_name),
     sub_publish_userinfo: settingOn(settingRow?.sub_publish_userinfo),
+    cf_kv_enabled: settingOn(settingRow?.cf_kv_enabled),
+    cf_kv_account_id: str(settingRow?.cf_kv_account_id, ""),
+    cf_kv_namespace_id: str(settingRow?.cf_kv_namespace_id, ""),
+    cf_kv_api_token: "",
+    cf_kv_public_domain: str(settingRow?.cf_kv_public_domain, ""),
+    cf_kv_sub_prefix: str(settingRow?.cf_kv_sub_prefix, ""),
+    cf_kv_traffic_threshold_mb: settingRow?.cf_kv_traffic_threshold_mb == null ? "10" : str(settingRow.cf_kv_traffic_threshold_mb),
+    cf_kv_max_stale_minutes: settingRow?.cf_kv_max_stale_minutes == null ? "60" : str(settingRow.cf_kv_max_stale_minutes),
+    cf_kv_delete_removed: settingRow?.cf_kv_delete_removed == null ? true : settingOn(settingRow?.cf_kv_delete_removed),
   };
 }
 
@@ -2518,6 +2536,7 @@ export default function PlusAdminPage() {
   const [saving, setSaving] = useState(false);
   const [secret, setSecret] = useState("");
   const [preview, setPreview] = useState<SubPreview | null>(null);
+  const [cfKVSyncing, setCFKVSyncing] = useState(false);
   const [ipLog, setIpLog] = useState<any | null>(null);
   const [error, setError] = useState("");
   const [importLink, setImportLink] = useState("");
@@ -3362,6 +3381,49 @@ export default function PlusAdminPage() {
     }
   };
 
+  const saveCFKVSettings = async (override?: Partial<typeof emptySubCfg> & { cf_kv_clear_token?: boolean }) => {
+    const nextCfg = { ...subCfg, ...override };
+    try {
+      const payload: Record<string, any> = {
+        cf_kv_enabled: Boolean(nextCfg.cf_kv_enabled),
+        cf_kv_account_id: nextCfg.cf_kv_account_id.trim(),
+        cf_kv_namespace_id: nextCfg.cf_kv_namespace_id.trim(),
+        cf_kv_public_domain: nextCfg.cf_kv_public_domain.trim(),
+        cf_kv_sub_prefix: nextCfg.cf_kv_sub_prefix.trim(),
+        cf_kv_traffic_threshold_mb: Math.max(0, Number.parseInt(nextCfg.cf_kv_traffic_threshold_mb || "10", 10) || 0),
+        cf_kv_max_stale_minutes: Math.max(0, Number.parseInt(nextCfg.cf_kv_max_stale_minutes || "60", 10) || 0),
+        cf_kv_delete_removed: Boolean(nextCfg.cf_kv_delete_removed),
+      };
+      if (override?.cf_kv_clear_token) {
+        payload.cf_kv_clear_token = true;
+      } else if (nextCfg.cf_kv_api_token.trim()) {
+        payload.cf_kv_api_token = nextCfg.cf_kv_api_token.trim();
+      }
+      const next = await call("admin:nodemgt.settings.set", payload);
+      setSettings(next);
+      setSubCfg(subCfgFromSettings(next as Record<string, any>));
+      toast.success("Cloudflare KV 配置已保存");
+    } catch (err) {
+      toast.error(nodemgtErrorMessage(err, t));
+      throw err;
+    }
+  };
+
+  const triggerCFKVSync = async (force = true) => {
+    setCFKVSyncing(true);
+    try {
+      const res: any = await call("admin:nodemgt.sub.cfkv.sync", { force });
+      toast.success(`CF KV 同步完成：共 ${res?.total ?? 0} 条，推送 ${res?.pushed ?? 0}，跳过 ${res?.skipped ?? 0}，删除 ${res?.deleted ?? 0}`);
+      const next = await call("admin:nodemgt.settings.get", {});
+      setSettings(next);
+      setSubCfg(subCfgFromSettings(next as Record<string, any>));
+    } catch (err) {
+      toast.error(nodemgtErrorMessage(err, t));
+    } finally {
+      setCFKVSyncing(false);
+    }
+  };
+
   const rememberTemplates = useCallback((next: NodemgtTemplateList) => {
     setTemplates(next);
     patchNodemgtSnapshot({ templates: next });
@@ -4022,6 +4084,133 @@ export default function PlusAdminPage() {
                 await saveSubSettings({ sub_publish_userinfo: next });
               }}
             />
+            <Paper
+              variant="outlined"
+              className="admin-tab-panel"
+              sx={{ ...panelSx, p: { xs: 1.5, sm: 2 } }}
+            >
+              <Stack spacing={2}>
+                <Box>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                    Cloudflare KV 订阅同步
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    将用户订阅与流量快照同步至 Cloudflare KV（Key 格式 sub:&lt;token&gt;，完全兼容 3xui-cf-pages），开启后每 2 分钟自动增量同步。
+                  </Typography>
+                </Box>
+                <SheetSwitch
+                  title="启用 Cloudflare KV 自动同步"
+                  description="开启后根据流量变化阈值或配置变更自动增量推送至 Cloudflare KV。"
+                  checked={Boolean(subCfg.cf_kv_enabled)}
+                  onChange={(next) => setSubCfg((current) => ({ ...current, cf_kv_enabled: next }))}
+                />
+                <TwoCol>
+                  <ReadyField
+                    ready={!loading || Boolean(subCfg.sub_path || subCfg.cf_kv_account_id)}
+                    label="Cloudflare Account ID"
+                    value={subCfg.cf_kv_account_id}
+                    onChange={(value) => setSubCfg((current) => ({ ...current, cf_kv_account_id: value }))}
+                    helper="Cloudflare 账户 ID（控制台右侧边栏可见）"
+                  />
+                  <ReadyField
+                    ready={!loading || Boolean(subCfg.sub_path || subCfg.cf_kv_namespace_id)}
+                    label="KV Namespace ID"
+                    value={subCfg.cf_kv_namespace_id}
+                    onChange={(value) => setSubCfg((current) => ({ ...current, cf_kv_namespace_id: value }))}
+                    helper="Workers KV 命名空间 ID（对应 3xui-cf-pages 的 SUB_KV）"
+                  />
+                </TwoCol>
+                <ReadyField
+                  ready={!loading || Boolean(subCfg.sub_path)}
+                  label="Cloudflare KV API Token"
+                  type="password"
+                  value={subCfg.cf_kv_api_token}
+                  onChange={(value) => setSubCfg((current) => ({ ...current, cf_kv_api_token: value }))}
+                  placeholder={settings.cf_kv_api_token_set ? "已配置加密保存，留空保持不变" : "填入具有 Workers KV Storage Edit 权限的 API Token"}
+                  helper={settings.cf_kv_api_token_set ? "Token 已加密存储在数据库中，留空保存不会覆盖原 Token。" : "需要 Account → Workers KV Storage → Edit 权限。"}
+                />
+                <TwoCol>
+                  <ReadyField
+                    ready={!loading || Boolean(subCfg.sub_path)}
+                    label="CF Pages 公开域名（可选）"
+                    value={subCfg.cf_kv_public_domain}
+                    onChange={(value) => setSubCfg((current) => ({ ...current, cf_kv_public_domain: value }))}
+                    placeholder="https://sub.example.com"
+                    helper="写入快照供 3xui-cf-pages 页面拼接订阅链接使用"
+                  />
+                  <ReadyField
+                    ready={!loading || Boolean(subCfg.sub_path)}
+                    label="订阅路径前缀（可选）"
+                    value={subCfg.cf_kv_sub_prefix}
+                    onChange={(value) => setSubCfg((current) => ({ ...current, cf_kv_sub_prefix: value }))}
+                    placeholder="例如 sub，留空为根路径"
+                    helper="需与 3xui-cf-pages 环境变量 SUB_PREFIX 保持一致"
+                  />
+                </TwoCol>
+                <TwoCol>
+                  <ReadyField
+                    ready={!loading || Boolean(subCfg.sub_path)}
+                    label="流量变化阈值（MB）"
+                    type="number"
+                    value={subCfg.cf_kv_traffic_threshold_mb}
+                    onChange={(value) => setSubCfg((current) => ({ ...current, cf_kv_traffic_threshold_mb: value }))}
+                    helper="仅流量变化达到该阈值时推送，默认 10 MB，减少 KV 写入次数"
+                  />
+                  <ReadyField
+                    ready={!loading || Boolean(subCfg.sub_path)}
+                    label="最长保鲜间隔（分钟）"
+                    type="number"
+                    value={subCfg.cf_kv_max_stale_minutes}
+                    onChange={(value) => setSubCfg((current) => ({ ...current, cf_kv_max_stale_minutes: value }))}
+                    helper="未达流量阈值时每隔该时长强制刷新一次，默认 60 分钟，0 为关闭"
+                  />
+                </TwoCol>
+                <SheetSwitch
+                  title="同步删除已移除的订阅"
+                  description="用户或订阅被删除后，自动从 Cloudflare KV 中清理对应的 sub:<token> 记录。"
+                  checked={Boolean(subCfg.cf_kv_delete_removed)}
+                  onChange={(next) => setSubCfg((current) => ({ ...current, cf_kv_delete_removed: next }))}
+                />
+                {settings.cf_kv_last_sync_at || settings.cf_kv_last_error ? (
+                  <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: "action.hover", fontSize: 13 }}>
+                    {settings.cf_kv_last_sync_at ? (
+                      <Typography variant="body2" color="text.secondary">
+                        最近同步：{formatWhen(settings.cf_kv_last_sync_at)}
+                        {settings.cf_kv_last_result
+                          ? `（共 ${settings.cf_kv_last_result.total ?? 0}，推送 ${settings.cf_kv_last_result.pushed ?? 0}，跳过 ${settings.cf_kv_last_result.skipped ?? 0}，删除 ${settings.cf_kv_last_result.deleted ?? 0}）`
+                          : ""}
+                      </Typography>
+                    ) : null}
+                    {settings.cf_kv_last_error ? (
+                      <Typography variant="body2" color="error" sx={{ mt: 0.5, wordBreak: "break-all" }}>
+                        最近错误：{settings.cf_kv_last_error}
+                      </Typography>
+                    ) : null}
+                  </Box>
+                ) : null}
+                <Stack direction="row" spacing={1} useFlexGap sx={{ justifyContent: "flex-end", flexWrap: "wrap" }}>
+                  {settings.cf_kv_api_token_set ? (
+                    <Button
+                      variant="outlined"
+                      color="error"
+                      onClick={() => void saveCFKVSettings({ cf_kv_clear_token: true }).catch(() => undefined)}
+                    >
+                      清除 Token
+                    </Button>
+                  ) : null}
+                  <Button
+                    variant="outlined"
+                    disabled={cfKVSyncing || !settings.cf_kv_api_token_set || !subCfg.cf_kv_account_id || !subCfg.cf_kv_namespace_id}
+                    onClick={() => void triggerCFKVSync(true)}
+                  >
+                    {cfKVSyncing ? "同步中..." : "立即同步到 CF KV"}
+                  </Button>
+                  <Button variant="contained" onClick={() => void saveCFKVSettings().catch(() => undefined)}>
+                    保存 CF KV 配置
+                  </Button>
+                </Stack>
+              </Stack>
+            </Paper>
           </Stack>
           ) : null}
         </SubPageTabs.Root>
