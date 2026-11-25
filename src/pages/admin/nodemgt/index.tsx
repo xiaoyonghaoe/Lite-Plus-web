@@ -591,6 +591,7 @@ function inboundForm(row?: any): FormMap {
     firewall_allow: row?.firewall_linked ? "true" : "false",
     firewall_allow_nodes: Array.isArray(row?.firewall_allow_nodes) ? row.firewall_allow_nodes.join(",") : "",
     virtual_tags: Array.isArray(row?.virtual_tags) ? row.virtual_tags.join(",") : "",
+    max_conns_per_ip: row?.max_conns_per_ip == null ? "50" : str(row.max_conns_per_ip),
   };
 }
 
@@ -1122,6 +1123,12 @@ function inboundUpsertBody(form: FormMap) {
     firewall_allow: form.firewall_allow === "true",
     firewall_allow_nodes: form.firewall_allow === "true" ? csvIDs(form.firewall_allow_nodes) : [],
     virtual_tags: csvIDs(form.virtual_tags),
+    max_conns_per_ip: (() => {
+      const raw = String(form.max_conns_per_ip ?? "").trim();
+      if (raw === "") return 50;
+      const n = Number.parseInt(raw, 10);
+      return Number.isFinite(n) && n >= 0 ? n : 50;
+    })(),
   };
 }
 
@@ -4907,6 +4914,13 @@ export default function PlusAdminPage() {
                   value={sheet.form.virtual_tags}
                   onChange={(value) => setForm({ virtual_tags: value })}
                   helper="例如填写 home 或 home,work。每个标签会在同端口派生独立虚拟入站（如 入站名 [home]），可在用户授权与路由规则中单独选择。"
+                />
+                <Field
+                  label="单 IP 最大同时连接数（TCP）"
+                  type="number"
+                  value={sheet.form.max_conns_per_ip}
+                  onChange={(value) => setForm({ max_conns_per_ip: value })}
+                  helper="通过节点防火墙动态防护（nftables）限制单 IP 到该端口的 TCP 并发连接数，默认 50，填 0 表示不限制（不拦截 UDP）。"
                 />
                 <TwoCol>
                   <Field label={t("nodemgt.col_sub_sort")} value={sheet.form.sort_index} onChange={(value) => setForm({ sort_index: value })} helper={t("nodemgt.sub_sort_help")} />
