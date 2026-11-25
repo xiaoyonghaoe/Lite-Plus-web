@@ -10,7 +10,6 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import ExpandMore from "@mui/icons-material/ExpandMore";
 import Close from "@mui/icons-material/Close";
-import { Github } from "@/components/admin/muiIcons";
 import {
   memo,
   useCallback,
@@ -31,7 +30,6 @@ import type { MenuItem as AdminMenuItem } from "@/types/menu";
 import { ADMIN_HOVER_PRELOAD_DELAY_MS } from "@/utils/adminPreload";
 import { iconMap } from "@/utils/iconHelper";
 import { preloadAdminRoute } from "@/routes";
-import { formatVersion } from "./adminShellModel";
 import { ChromeIconButton } from "./ChromeActions";
 import SidebarBrand from "./SidebarBrand";
 
@@ -599,37 +597,6 @@ function MiniFlyoutMenu({
   );
 }
 
-function SidebarVersionLabel({
-  version,
-  hash,
-}: {
-  version: string;
-  hash?: string | null;
-}) {
-  const snapshot = version.match(/^snapshot-(.+)$/i);
-  const normalizedHash = hash?.trim();
-  const visibleHash =
-    normalizedHash && normalizedHash !== "unknown" ? normalizedHash : null;
-
-  if (snapshot) {
-    return (
-      <span className="min-w-0 text-sm font-normal leading-5">
-        <span className="block">Snapshot</span>
-        <span className="block break-words">
-          {snapshot[1]}
-          {visibleHash ? ` · ${visibleHash}` : ""}
-        </span>
-      </span>
-    );
-  }
-
-  return (
-    <span className="min-w-0 whitespace-nowrap text-base font-normal leading-5">
-      {formatVersion(version, hash)}
-    </span>
-  );
-}
-
 type AdminSidebarProps = {
   menuItems: AdminMenuItem[];
   footerItems: AdminMenuItem[];
@@ -789,9 +756,9 @@ export default function AdminSidebar({
     );
   };
 
-  const versionLabel = currentVersion
-    ? `${t("common.version", "版本")}：${formatVersion(currentVersion, versionHash)}`
-    : "";
+  void currentVersion;
+  void currentReleaseURL;
+  void versionHash;
 
   return (
     <Stack sx={{ height: "100%", bgcolor: "background.paper", position: "relative" }}>
@@ -833,76 +800,20 @@ export default function AdminSidebar({
         ) : null}
       </Box>
 
-      <Box sx={{ py: 1 }}>
-        <List disablePadding>
-          {footerItems.map((item) => (
-            <NavLinkItem
-              key={item.path}
-              item={item}
-              mini={mini}
-              onNavigate={onNavigate}
-            />
-          ))}
-          {currentVersion && currentReleaseURL ? (
-            mini ? (
-              <Tooltip title={versionLabel} placement="right" arrow>
-                <ListItemButton
-                  data-testid="sidebar-version"
-                  component="a"
-                  href={currentReleaseURL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  sx={miniItemSx}
-                >
-                  <ListItemIcon sx={{ minWidth: 0, color: "text.secondary" }}>
-                    <Github size={18} strokeWidth={1.5} />
-                  </ListItemIcon>
-                </ListItemButton>
-              </Tooltip>
-            ) : (
-              <ListItemButton
-                data-testid="sidebar-version"
-                component="a"
-                href={currentReleaseURL}
-                target="_blank"
-                rel="noopener noreferrer"
-                sx={navRowSx}
-                title={versionLabel}
-              >
-                <ListItemIcon
-                  sx={{
-                    ...navIconSx,
-                    color: "text.secondary",
-                  }}
-                >
-                  <Github size={18} strokeWidth={1.5} />
-                </ListItemIcon>
-                <ListItemText
-                  sx={{ my: 0, display: "flex", alignItems: "center", minHeight: 20 }}
-                  primary={
-                    <SidebarVersionLabel
-                      version={currentVersion}
-                      hash={versionHash}
-                    />
-                  }
-                  slotProps={{
-                    primary: {
-                      component: "span",
-                      sx: {
-                        display: "flex",
-                        alignItems: "center",
-                        lineHeight: "20px",
-                        fontSize: 16,
-                        fontWeight: 500,
-                      },
-                    },
-                  }}
-                />
-              </ListItemButton>
-            )
-          ) : null}
-        </List>
-      </Box>
+      {footerItems.length > 0 ? (
+        <Box sx={{ py: 1 }}>
+          <List disablePadding>
+            {footerItems.map((item) => (
+              <NavLinkItem
+                key={item.path}
+                item={item}
+                mini={mini}
+                onNavigate={onNavigate}
+              />
+            ))}
+          </List>
+        </Box>
+      ) : null}
     </Stack>
   );
 }

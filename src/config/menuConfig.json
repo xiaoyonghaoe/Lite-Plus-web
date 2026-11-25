@@ -191,17 +191,5 @@
       ]
     }
   ],
-  "footer": [
-    {
-      "labelKey": "logs.title",
-      "path": "/admin/logs",
-      "icon": "FileText"
-    },
-    {
-      "labelKey": "common.documentation",
-      "path": "https://nuomiiiii.github.io/Lite-document/",
-      "icon": "Book",
-      "newTab": true
-    }
-  ]
+  "footer": []
 }

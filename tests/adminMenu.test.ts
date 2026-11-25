@@ -137,10 +137,7 @@ test("keeps the admin navigation in the intended groups", () => {
 
   assert.deepEqual(
     menuConfig.footer.map((item) => item.path),
-    [
-      "/admin/logs",
-      "https://nuomiiiii.github.io/Lite-document/",
-    ],
+    [],
   );
   assert.equal(allPaths(menuConfig.footer).includes("/admin/about"), false);
 });
@@ -267,10 +264,6 @@ test("desktop navigation expands by default and can collapse to a mini rail", ()
   assert.match(adminPanelSource, /const navLabelSx = \{/);
   assert.match(adminPanelSource, /whiteSpace: "normal"/);
   assert.match(adminPanelSource, /px: 1\.25/);
-  assert.match(
-    adminPanelSource,
-    /title=\{versionLabel\}[\s\S]*<ListItemIcon[\s\S]*<Github size=\{18\} strokeWidth=\{1\.5\} \/>[\s\S]*<ListItemText/,
-  );
   assert.match(routesSource, /path: "servers\/:uuid"/);
 });
 

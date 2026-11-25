@@ -13,6 +13,7 @@ import Switch from "@mui/material/Switch";
 import Tab from "@mui/material/Tab";
 import Tabs from "@mui/material/Tabs";
 import TextField from "@mui/material/TextField";
+import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -4451,12 +4452,52 @@ export default function PlusAdminPage() {
               fixed
               rows={listPager.pageItems}
               columns={[
-                { key: "username", label: t("nodemgt.col_username"), width: "11%" },
-                { key: "inbounds", label: t("nodemgt.col_inbounds"), width: "12%", render: (row) => <InboundOverflow names={row.inbound_names || []} /> },
-                { key: "plan", label: t("nodemgt.col_plan"), width: "6%", render: (row) => row.plan_name || "—" },
+                { key: "username", label: t("nodemgt.col_username"), width: "13%" },
+                {
+                  key: "inbounds",
+                  label: t("nodemgt.col_inbounds"),
+                  width: "7%",
+                  render: (row) => {
+                    const names: string[] = Array.isArray(row.inbound_names)
+                      ? row.inbound_names.map((item: unknown) => String(item || "").trim()).filter(Boolean)
+                      : [];
+                    const chip = (
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        label={String(names.length)}
+                        sx={{
+                          height: 22,
+                          minWidth: 28,
+                          fontWeight: 600,
+                          fontVariantNumeric: "tabular-nums",
+                          cursor: names.length ? "pointer" : "default",
+                        }}
+                      />
+                    );
+                    if (!names.length) return chip;
+                    return (
+                      <Tooltip
+                        arrow
+                        placement="top"
+                        title={
+                          <Stack spacing={0.25} sx={{ py: 0.25 }}>
+                            {names.map((name, idx) => (
+                              <Typography key={`${name}-${idx}`} variant="caption" sx={{ display: "block", color: "inherit" }}>
+                                {name}
+                              </Typography>
+                            ))}
+                          </Stack>
+                        }
+                      >
+                        {chip}
+                      </Tooltip>
+                    );
+                  },
+                },
                 {
                   key: "presence",
-                  width: "6%",
+                  width: "7%",
                   label: t("nodemgt.col_presence"),
                   render: (row) => (
                     <Box
@@ -4471,7 +4512,7 @@ export default function PlusAdminPage() {
                 },
                 {
                   key: "online_ips",
-                  width: "8%",
+                  width: "11%",
                   label: t("nodemgt.col_online_ips"),
                   render: (row) => {
                     const ips = liveOnlineIPs(row);
@@ -4486,23 +4527,26 @@ export default function PlusAdminPage() {
                     );
                   },
                 },
-                { key: "status", label: t("nodemgt.col_status"), width: "6%", render: (row) => <StatusChip value={row.status} /> },
-                { key: "delivery", label: t("nodemgt.col_delivery"), width: "6%", render: (row) => {
-                  const cmd = userDeliveryCmd(row, inbounds, delivery);
-                  return <DeliveryChip status={inboundDeliveryOf(row, cmd)} error={inboundTouched(row, cmd) ? cmd?.last_error : undefined} />;
-                } },
-                { key: "quota", label: t("nodemgt.col_quota_bytes"), width: "8%", render: (row) => formatQuotaLabel(row.used_bytes || 0, row.quota_bytes || 0, "—") },
-                { key: "rate", label: t("nodemgt.col_rate_limit_bps"), width: "6%", render: (row) => formatMbpsLabel(row.rate_limit_bps || 0, t("nodemgt.unlimited")) },
-                { key: "ends", label: t("nodemgt.col_expires"), width: "10%", render: (row) => formatWhen(row.expires_at || row.assignment_ends_at) },
                 {
-                  key: "reset",
-                  width: "6%",
-                  label: t("nodemgt.col_traffic_reset_day"),
-                  render: (row) => (Number(row.traffic_reset_day) > 0 ? t("nodemgt.reset_day_value", { day: row.traffic_reset_day }) : t("nodemgt.reset_day_off")),
+                  key: "status_delivery",
+                  label: `${t("nodemgt.col_status")} / ${t("nodemgt.col_delivery")}`,
+                  width: "13%",
+                  render: (row) => {
+                    const cmd = userDeliveryCmd(row, inbounds, delivery);
+                    return (
+                      <Stack direction="row" spacing={0.5} useFlexGap sx={{ alignItems: "center", flexWrap: "wrap" }}>
+                        <StatusChip value={row.status} />
+                        <DeliveryChip status={inboundDeliveryOf(row, cmd)} error={inboundTouched(row, cmd) ? cmd?.last_error : undefined} />
+                      </Stack>
+                    );
+                  },
                 },
+                { key: "quota", label: t("nodemgt.col_quota_bytes"), width: "11%", render: (row) => formatQuotaLabel(row.used_bytes || 0, row.quota_bytes || 0, "—") },
+                { key: "rate", label: t("nodemgt.col_rate_limit_bps"), width: "8%", render: (row) => formatMbpsLabel(row.rate_limit_bps || 0, t("nodemgt.unlimited")) },
+                { key: "ends", label: t("nodemgt.col_expires"), width: "14%", render: (row) => formatWhen(row.expires_at || row.assignment_ends_at) },
                 {
                   key: "actions",
-                  width: "12%",
+                  width: "16%",
                   label: t("nodemgt.col_actions"),
                   render: (row) => (
                     <RowActions>
