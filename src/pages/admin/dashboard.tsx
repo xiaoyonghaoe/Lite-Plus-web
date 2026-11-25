@@ -559,12 +559,25 @@ export default function AdminDashboard() {
   const initialDataPending = summarySections.length > 0 && loading && !data;
   const formalLayout = (
     <>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {(["server_status", "traffic_summary", "storage_summary", "cost_center"] as const).map((module) => (
-          <div key={module} data-dashboard-module={module} className="min-w-0">{renderModule(module)}</div>
-        ))}
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+        <div className="flex min-w-0 flex-col gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {(["server_status", "traffic_summary", "storage_summary", "cost_center"] as const).map((module) => (
+              <div key={module} data-dashboard-module={module} className="min-w-0">{renderModule(module)}</div>
+            ))}
+          </div>
+          <div data-dashboard-module="latency_trend" className="min-w-0 flex-1 [&>*]:h-full">
+            {renderModule("latency_trend")}
+          </div>
+        </div>
+        <div
+          data-dashboard-module="renewal_calendar"
+          data-dashboard-span={moduleSpans.renewal_calendar ?? 6}
+          className="min-w-0 [&>*]:h-full"
+        >
+          {renderModule("renewal_calendar")}
+        </div>
       </div>
-      <div data-dashboard-module="latency_trend" className="min-w-0">{renderModule("latency_trend")}</div>
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
         {(["traffic_trend", "billing_trend"] as const).map((module) => (
           <div
@@ -587,15 +600,6 @@ export default function AdminDashboard() {
             {renderModule(module)}
           </div>
         ))}
-      </div>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
-        <div
-          data-dashboard-module="renewal_calendar"
-          data-dashboard-span={moduleSpans.renewal_calendar ?? 4}
-          className={`min-w-0 [&>*]:h-full ${moduleGridClass[moduleSpans.renewal_calendar ?? 4]}`}
-        >
-          {renderModule("renewal_calendar")}
-        </div>
       </div>
     </>
   );

@@ -96,7 +96,8 @@ test("formal dashboard stretches paired cards to equal row height", () => {
     adminDashboardSource,
     /\["return_route", "alerts"\][\s\S]+?className="min-w-0 \[&>\*\]:h-full"/,
   );
-  assert.match(adminDashboardSource, /xl:grid-cols-4/);
+  assert.match(adminDashboardSource, /sm:grid-cols-2/);
+  assert.match(adminDashboardSource, /data-dashboard-module="renewal_calendar"/);
   assert.match(adminDashboardSource, /\["traffic_trend", "billing_trend"\]/);
   assert.match(dashboardSettingsSource, /sm:grid-cols-4/);
 });
