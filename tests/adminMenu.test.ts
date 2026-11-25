@@ -111,6 +111,7 @@ test("keeps the admin navigation in the intended groups", () => {
     nodemgt?.children?.map((item) => item.path),
     [
       "/admin/nodemgt/overview",
+      "/admin/nodemgt/stats",
       "/admin/nodemgt/inbounds",
       "/admin/nodemgt/forwarding",
       "/admin/nodemgt/outbounds",
@@ -202,6 +203,7 @@ test("keeps the nodemgt group open across nested nodemgt routes", () => {
 
   for (const pathname of [
     "/admin/nodemgt/overview",
+    "/admin/nodemgt/stats",
     "/admin/nodemgt/inbounds",
     "/admin/nodemgt/forwarding",
     "/admin/nodemgt/outbounds",

@@ -48,6 +48,11 @@
           "icon": "LayoutDashboard"
         },
         {
+          "labelKey": "nodemgt.tab_stats",
+          "path": "/admin/nodemgt/stats",
+          "icon": "BarChart2"
+        },
+        {
           "labelKey": "nodemgt.tab_inbounds",
           "path": "/admin/nodemgt/inbounds",
           "icon": "Hub"

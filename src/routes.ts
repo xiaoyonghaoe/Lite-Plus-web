@@ -42,6 +42,7 @@ const loadNodemgtAdminPage = () => (nodemgtAdminModule ??= importNodemgtAdminPag
 const NODEMGT_ADMIN_SEGMENTS = [
   "",
   "overview",
+  "stats",
   "inbounds",
   "forwarding",
   "chains",

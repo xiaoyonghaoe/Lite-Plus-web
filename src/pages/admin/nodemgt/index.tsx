@@ -114,6 +114,7 @@ import SubscriptionTemplates from "./subscriptionTemplates";
 
 type TabKey =
   | "overview"
+  | "stats"
   | "inbounds"
   | "chains"
   | "outbounds"
@@ -132,6 +133,7 @@ type ListFilters = { search: string; nodes: string[] };
 const NODE_TABS: Record<string, TabKey> = {
   "": "overview",
   "/overview": "overview",
+  "/stats": "stats",
   "/inbounds": "inbounds",
   "/forwarding": "chains",
   "/chains": "chains",
@@ -3880,14 +3882,16 @@ export default function PlusAdminPage() {
       data-testid={tab === "subscriptions" && subPage === "templates" ? "nodemgt-templates-page" : "nodemgt-admin-page"}
       data-admin-route-pending={loading && !cached ? "true" : undefined}
     >
-      <AdminPageTitle
-        description={t(
-          tab === "subscriptions" && subPage === "templates" ? "nodemgt.page_templates_help" : `nodemgt.page_${tab}_help`,
-          { defaultValue: t("nodemgt.description") },
-        )}
-      >
-        {t(`nodemgt.tab_${tab}`)}
-      </AdminPageTitle>
+      {tab !== "stats" ? (
+        <AdminPageTitle
+          description={t(
+            tab === "subscriptions" && subPage === "templates" ? "nodemgt.page_templates_help" : `nodemgt.page_${tab}_help`,
+            { defaultValue: t("nodemgt.description") },
+          )}
+        >
+          {t(`nodemgt.tab_${tab}`)}
+        </AdminPageTitle>
+      ) : null}
 
       {tab === "overview" ? (
         <Box
@@ -3921,7 +3925,7 @@ export default function PlusAdminPage() {
           />
         </Box>
       ) : null}
-      {tab === "overview" ? (
+      {tab === "stats" ? (
         <TrafficStatsPanel nodeOptions={nodeOptions} inboundOptions={inboundOptions} userOptions={userOptions} />
       ) : null}
 

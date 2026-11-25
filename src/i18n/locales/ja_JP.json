@@ -2240,6 +2240,8 @@
     "tab_inbounds": "インバウンド",
     "tab_outbounds": "アウトバウンド",
     "tab_overview": "概要",
+    "tab_stats": "トラフィック統計",
+    "page_stats_help": "選択したユーザーのノード別通信量とトップ20ドメイン分布を表示します。",
     "tab_plans": "プラン",
     "tab_routes": "ルート",
     "tab_subscriptions": "購読",

@@ -95,6 +95,7 @@ export function getNodemgtSnapshot(): NodemgtSnapshot | null {
 const NODEMGT_PATH_TAB: Record<string, string> = {
   "": "overview",
   "/overview": "overview",
+  "/stats": "stats",
   "/inbounds": "inbounds",
   "/forwarding": "chains",
   "/chains": "chains",
@@ -122,6 +123,8 @@ export function nodemgtTabFromAdminPath(pathname: string): string {
 
 export function nodemgtPrimaryMethods(tab: string): string[] {
   switch (tab) {
+    case "stats":
+      return ["admin:nodemgt.user.list", "admin:nodemgt.node.list", "admin:nodemgt.inbound.list"];
     case "inbounds":
       return ["admin:nodemgt.inbound.list", "admin:nodemgt.control.status"];
     case "outbounds":

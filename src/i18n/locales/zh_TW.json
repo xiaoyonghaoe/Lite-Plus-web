@@ -2240,6 +2240,8 @@
     "tab_inbounds": "入站",
     "tab_outbounds": "出站",
     "tab_overview": "概览",
+    "tab_stats": "流量統計",
+    "page_stats_help": "檢視當前使用者的節點用量與網域流量分佈。",
     "tab_plans": "方案",
     "tab_routes": "路由",
     "tab_subscriptions": "訂閱",

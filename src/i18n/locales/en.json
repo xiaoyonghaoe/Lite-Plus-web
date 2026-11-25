@@ -2240,6 +2240,8 @@
     "tab_inbounds": "Inbounds",
     "tab_outbounds": "Outbounds",
     "tab_overview": "Overview",
+    "tab_stats": "Traffic Stats",
+    "page_stats_help": "Inspect per-node usage and top-20 root domain traffic for the selected user.",
     "tab_plans": "Plans",
     "tab_routes": "Routes",
     "tab_subscriptions": "Subscriptions",
