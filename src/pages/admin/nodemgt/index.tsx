@@ -3381,19 +3381,35 @@ export default function PlusAdminPage() {
     }
   };
 
+  const cfSubPathFromPrefix = (prefix: string) => {
+    const clean = prefix.trim().replace(/^\/+|\/+$/g, "");
+    return clean ? `/${clean}/` : "/";
+  };
+
   const saveCFKVSettings = async (override?: Partial<typeof emptySubCfg> & { cf_kv_clear_token?: boolean }) => {
     const nextCfg = { ...subCfg, ...override };
+    const enabled = Boolean(nextCfg.cf_kv_enabled);
+    const normalizedDomain = nextCfg.cf_kv_public_domain.trim().replace(/\/+$/, "");
+    const normalizedPrefix = nextCfg.cf_kv_sub_prefix.trim().replace(/^\/+|\/+$/g, "");
     try {
       const payload: Record<string, any> = {
-        cf_kv_enabled: Boolean(nextCfg.cf_kv_enabled),
+        cf_kv_enabled: enabled,
         cf_kv_account_id: nextCfg.cf_kv_account_id.trim(),
         cf_kv_namespace_id: nextCfg.cf_kv_namespace_id.trim(),
-        cf_kv_public_domain: nextCfg.cf_kv_public_domain.trim(),
-        cf_kv_sub_prefix: nextCfg.cf_kv_sub_prefix.trim(),
+        cf_kv_public_domain: normalizedDomain,
+        cf_kv_sub_prefix: normalizedPrefix,
         cf_kv_traffic_threshold_mb: Math.max(0, Number.parseInt(nextCfg.cf_kv_traffic_threshold_mb || "10", 10) || 0),
         cf_kv_max_stale_minutes: Math.max(0, Number.parseInt(nextCfg.cf_kv_max_stale_minutes || "60", 10) || 0),
-        cf_kv_delete_removed: Boolean(nextCfg.cf_kv_delete_removed),
+        cf_kv_delete_removed: true,
       };
+      if (enabled) {
+        payload.sub_listen_port = 0;
+        payload.sub_public_port = 0;
+        payload.sub_path = cfSubPathFromPrefix(normalizedPrefix);
+        if (normalizedDomain) {
+          payload.sub_public_host = normalizedDomain;
+        }
+      }
       if (override?.cf_kv_clear_token) {
         payload.cf_kv_clear_token = true;
       } else if (nextCfg.cf_kv_api_token.trim()) {
@@ -3402,7 +3418,8 @@ export default function PlusAdminPage() {
       const next = await call("admin:nodemgt.settings.set", payload);
       setSettings(next);
       setSubCfg(subCfgFromSettings(next as Record<string, any>));
-      toast.success("Cloudflare KV 配置已保存");
+      toast.success(enabled ? "已保存并启用 Cloudflare KV 分发" : "已切换为本机路径监听模式");
+      await loadAfterChange();
     } catch (err) {
       toast.error(nodemgtErrorMessage(err, t));
       throw err;
@@ -4017,200 +4034,243 @@ export default function PlusAdminPage() {
             <Paper
               variant="outlined"
               className="admin-tab-panel"
-              sx={{ ...panelSx, p: { xs: 1.5, sm: 2 } }}
+              sx={{
+                ...panelSx,
+                p: { xs: 1.5, sm: 2 },
+                borderColor: subCfg.cf_kv_enabled ? "success.main" : "warning.main",
+                borderWidth: subCfg.cf_kv_enabled ? 1 : 1.5,
+              }}
             >
               <Stack spacing={2}>
-                <ThreeCol>
-                  <ReadyField
-                    ready={!loading || Boolean(subCfg.sub_listen_port || subCfg.sub_path)}
-                    label={t("nodemgt.sub_listen_port")}
-                    value={subCfg.sub_listen_port}
-                    onChange={(value) => setSubCfg((current) => ({ ...current, sub_listen_port: value }))}
-                    helper={t("nodemgt.sub_listen_port_help")}
-                  />
-                  <ReadyField
-                    ready={!loading || Boolean(subCfg.sub_listen_port || subCfg.sub_path)}
-                    label={t("nodemgt.sub_public_port")}
-                    value={subCfg.sub_public_port}
-                    onChange={(value) => setSubCfg((current) => ({ ...current, sub_public_port: value }))}
-                    helper={t("nodemgt.sub_public_port_help")}
-                  />
-                  <ReadyField
-                    ready={!loading || Boolean(subCfg.sub_listen_port || subCfg.sub_path)}
-                    label={t("nodemgt.sub_path")}
-                    value={subCfg.sub_path}
-                    onChange={(value) => setSubCfg((current) => ({ ...current, sub_path: value }))}
-                    helper={t("nodemgt.sub_path_help")}
-                  />
-                </ThreeCol>
-                <ReadyField
-                  ready={!loading || Boolean(subCfg.sub_public_host || subCfg.sub_path)}
-                  label={t("nodemgt.sub_public_host")}
-                  value={subCfg.sub_public_host}
-                  onChange={(value) => setSubCfg((current) => ({ ...current, sub_public_host: value }))}
-                  helper={t("nodemgt.sub_public_host_help")}
-                />
-                <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
-                  <Button variant="contained" onClick={() => void saveSubSettings().catch(() => undefined)}>
-                    {t("nodemgt.save_sub_settings")}
-                  </Button>
-                </Box>
-              </Stack>
-            </Paper>
-            <SettingCardSwitch
-              title={t("nodemgt.sub_reuse_https")}
-              description={t("nodemgt.sub_reuse_https_help")}
-              defaultChecked={Boolean(subCfg.sub_reuse_https)}
-              onChange={async (next) => {
-                await saveSubSettings({
-                  sub_reuse_https: next,
-                  sub_public_host: subCfg.sub_public_host,
-                });
-              }}
-            />
-            <SettingCardSwitch
-              title={t("nodemgt.sub_publish_name")}
-              description={t("nodemgt.sub_publish_name_help")}
-              defaultChecked={Boolean(subCfg.sub_publish_name)}
-              onChange={async (next) => {
-                await saveSubSettings({ sub_publish_name: next });
-              }}
-            />
-            <SettingCardSwitch
-              title={t("nodemgt.sub_publish_userinfo")}
-              description={t("nodemgt.sub_publish_userinfo_help")}
-              defaultChecked={Boolean(subCfg.sub_publish_userinfo)}
-              onChange={async (next) => {
-                await saveSubSettings({ sub_publish_userinfo: next });
-              }}
-            />
-            <Paper
-              variant="outlined"
-              className="admin-tab-panel"
-              sx={{ ...panelSx, p: { xs: 1.5, sm: 2 } }}
-            >
-              <Stack spacing={2}>
-                <Box>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                    Cloudflare KV 订阅同步
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    将用户订阅与流量快照同步至 Cloudflare KV（Key 格式 sub:&lt;token&gt;，完全兼容 3xui-cf-pages），开启后每 2 分钟自动增量同步。
-                  </Typography>
-                </Box>
-                <SheetSwitch
-                  title="启用 Cloudflare KV 自动同步"
-                  description="开启后根据流量变化阈值或配置变更自动增量推送至 Cloudflare KV。"
-                  checked={Boolean(subCfg.cf_kv_enabled)}
-                  onChange={(next) => setSubCfg((current) => ({ ...current, cf_kv_enabled: next }))}
-                />
-                <TwoCol>
-                  <ReadyField
-                    ready={!loading || Boolean(subCfg.sub_path || subCfg.cf_kv_account_id)}
-                    label="Cloudflare Account ID"
-                    value={subCfg.cf_kv_account_id}
-                    onChange={(value) => setSubCfg((current) => ({ ...current, cf_kv_account_id: value }))}
-                    helper="Cloudflare 账户 ID（控制台右侧边栏可见）"
-                  />
-                  <ReadyField
-                    ready={!loading || Boolean(subCfg.sub_path || subCfg.cf_kv_namespace_id)}
-                    label="KV Namespace ID"
-                    value={subCfg.cf_kv_namespace_id}
-                    onChange={(value) => setSubCfg((current) => ({ ...current, cf_kv_namespace_id: value }))}
-                    helper="Workers KV 命名空间 ID（对应 3xui-cf-pages 的 SUB_KV）"
-                  />
-                </TwoCol>
-                <ReadyField
-                  ready={!loading || Boolean(subCfg.sub_path)}
-                  label="Cloudflare KV API Token"
-                  type="password"
-                  value={subCfg.cf_kv_api_token}
-                  onChange={(value) => setSubCfg((current) => ({ ...current, cf_kv_api_token: value }))}
-                  placeholder={settings.cf_kv_api_token_set ? "已配置加密保存，留空保持不变" : "填入具有 Workers KV Storage Edit 权限的 API Token"}
-                  helper={settings.cf_kv_api_token_set ? "Token 已加密存储在数据库中，留空保存不会覆盖原 Token。" : "需要 Account → Workers KV Storage → Edit 权限。"}
-                />
-                <TwoCol>
-                  <ReadyField
-                    ready={!loading || Boolean(subCfg.sub_path)}
-                    label="CF Pages 公开域名（可选）"
-                    value={subCfg.cf_kv_public_domain}
-                    onChange={(value) => setSubCfg((current) => ({ ...current, cf_kv_public_domain: value }))}
-                    placeholder="https://sub.example.com"
-                    helper="写入快照供 3xui-cf-pages 页面拼接订阅链接使用"
-                  />
-                  <ReadyField
-                    ready={!loading || Boolean(subCfg.sub_path)}
-                    label="订阅路径前缀（可选）"
-                    value={subCfg.cf_kv_sub_prefix}
-                    onChange={(value) => setSubCfg((current) => ({ ...current, cf_kv_sub_prefix: value }))}
-                    placeholder="例如 sub，留空为根路径"
-                    helper="需与 3xui-cf-pages 环境变量 SUB_PREFIX 保持一致"
-                  />
-                </TwoCol>
-                <TwoCol>
-                  <ReadyField
-                    ready={!loading || Boolean(subCfg.sub_path)}
-                    label="流量变化阈值（MB）"
-                    type="number"
-                    value={subCfg.cf_kv_traffic_threshold_mb}
-                    onChange={(value) => setSubCfg((current) => ({ ...current, cf_kv_traffic_threshold_mb: value }))}
-                    helper="仅流量变化达到该阈值时推送，默认 10 MB，减少 KV 写入次数"
-                  />
-                  <ReadyField
-                    ready={!loading || Boolean(subCfg.sub_path)}
-                    label="最长保鲜间隔（分钟）"
-                    type="number"
-                    value={subCfg.cf_kv_max_stale_minutes}
-                    onChange={(value) => setSubCfg((current) => ({ ...current, cf_kv_max_stale_minutes: value }))}
-                    helper="未达流量阈值时每隔该时长强制刷新一次，默认 60 分钟，0 为关闭"
-                  />
-                </TwoCol>
-                <SheetSwitch
-                  title="同步删除已移除的订阅"
-                  description="用户或订阅被删除后，自动从 Cloudflare KV 中清理对应的 sub:<token> 记录。"
-                  checked={Boolean(subCfg.cf_kv_delete_removed)}
-                  onChange={(next) => setSubCfg((current) => ({ ...current, cf_kv_delete_removed: next }))}
-                />
-                {settings.cf_kv_last_sync_at || settings.cf_kv_last_error ? (
-                  <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: "action.hover", fontSize: 13 }}>
-                    {settings.cf_kv_last_sync_at ? (
-                      <Typography variant="body2" color="text.secondary">
-                        最近同步：{formatWhen(settings.cf_kv_last_sync_at)}
-                        {settings.cf_kv_last_result
-                          ? `（共 ${settings.cf_kv_last_result.total ?? 0}，推送 ${settings.cf_kv_last_result.pushed ?? 0}，跳过 ${settings.cf_kv_last_result.skipped ?? 0}，删除 ${settings.cf_kv_last_result.deleted ?? 0}）`
-                          : ""}
+                <Box sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 2 }}>
+                  <Box sx={{ minWidth: 0 }}>
+                    <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: "center", flexWrap: "wrap" }}>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                        Cloudflare KV 订阅分发
                       </Typography>
-                    ) : null}
-                    {settings.cf_kv_last_error ? (
-                      <Typography variant="body2" color="error" sx={{ mt: 0.5, wordBreak: "break-all" }}>
-                        最近错误：{settings.cf_kv_last_error}
-                      </Typography>
-                    ) : null}
+                      {subCfg.cf_kv_enabled ? (
+                        <Chip size="small" color="success" label="已开启 · 自动同步中" />
+                      ) : (
+                        <Chip
+                          size="small"
+                          color="warning"
+                          label="未开启 · 当前使用本机监听"
+                          sx={{ fontWeight: 600 }}
+                        />
+                      )}
+                    </Stack>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                      与本机路径监听二选一。开启后默认同步新增、修改与删除（约 2 秒异步推送，每 2 分钟检查流量增量），并自动关闭本机独立监听。
+                    </Typography>
                   </Box>
-                ) : null}
-                <Stack direction="row" spacing={1} useFlexGap sx={{ justifyContent: "flex-end", flexWrap: "wrap" }}>
-                  {settings.cf_kv_api_token_set ? (
-                    <Button
-                      variant="outlined"
-                      color="error"
-                      onClick={() => void saveCFKVSettings({ cf_kv_clear_token: true }).catch(() => undefined)}
-                    >
-                      清除 Token
-                    </Button>
-                  ) : null}
-                  <Button
-                    variant="outlined"
-                    disabled={cfKVSyncing || !settings.cf_kv_api_token_set || !subCfg.cf_kv_account_id || !subCfg.cf_kv_namespace_id}
-                    onClick={() => void triggerCFKVSync(true)}
-                  >
-                    {cfKVSyncing ? "同步中..." : "立即同步到 CF KV"}
-                  </Button>
-                  <Button variant="contained" onClick={() => void saveCFKVSettings().catch(() => undefined)}>
-                    保存 CF KV 配置
-                  </Button>
-                </Stack>
+                  <Switch
+                    checked={Boolean(subCfg.cf_kv_enabled)}
+                    onChange={(_, next) => {
+                      setSubCfg((current) => ({ ...current, cf_kv_enabled: next }));
+                      void saveCFKVSettings({ cf_kv_enabled: next }).catch(() => {
+                        setSubCfg((current) => ({ ...current, cf_kv_enabled: !next }));
+                      });
+                    }}
+                  />
+                </Box>
+
+                {!subCfg.cf_kv_enabled ? (
+                  <SettingsAlert severity="warning">
+                    Cloudflare KV 同步当前未开启，正在使用下方本机路径监听模式；新增、修改或删除用户不会自动同步到 Cloudflare KV。打开右上角开关即可切换为 Cloudflare KV 分发。
+                  </SettingsAlert>
+                ) : (
+                  <>
+                    <TwoCol>
+                      <ReadyField
+                        ready={!loading || Boolean(subCfg.sub_path || subCfg.cf_kv_account_id)}
+                        label="Cloudflare Account ID"
+                        value={subCfg.cf_kv_account_id}
+                        onChange={(value) => setSubCfg((current) => ({ ...current, cf_kv_account_id: value }))}
+                        helper="Cloudflare 账户 ID（控制台右侧边栏可见）"
+                      />
+                      <ReadyField
+                        ready={!loading || Boolean(subCfg.sub_path || subCfg.cf_kv_namespace_id)}
+                        label="KV Namespace ID"
+                        value={subCfg.cf_kv_namespace_id}
+                        onChange={(value) => setSubCfg((current) => ({ ...current, cf_kv_namespace_id: value }))}
+                        helper="Workers KV 命名空间 ID（对应 3xui-cf-pages 的 SUB_KV）"
+                      />
+                    </TwoCol>
+                    <ReadyField
+                      ready={!loading || Boolean(subCfg.sub_path)}
+                      label="Cloudflare KV API Token"
+                      type="password"
+                      value={subCfg.cf_kv_api_token}
+                      onChange={(value) => setSubCfg((current) => ({ ...current, cf_kv_api_token: value }))}
+                      placeholder={settings.cf_kv_api_token_set ? "已配置加密保存，留空保持不变" : "填入具有 Workers KV Storage Edit 权限的 API Token"}
+                      helper={settings.cf_kv_api_token_set ? "Token 已加密存储在数据库中，留空保存不会覆盖原 Token。" : "需要 Account → Workers KV Storage → Edit 权限。"}
+                    />
+                    <TwoCol>
+                      <ReadyField
+                        ready={!loading || Boolean(subCfg.sub_path)}
+                        label="CF Pages 公开域名"
+                        value={subCfg.cf_kv_public_domain}
+                        onChange={(value) => setSubCfg((current) => ({ ...current, cf_kv_public_domain: value }))}
+                        placeholder="https://sub.example.com"
+                        helper="保存后自动同步为面板订阅链接的对外域名"
+                      />
+                      <ReadyField
+                        ready={!loading || Boolean(subCfg.sub_path)}
+                        label="订阅路径前缀"
+                        value={subCfg.cf_kv_sub_prefix}
+                        onChange={(value) => setSubCfg((current) => ({ ...current, cf_kv_sub_prefix: value }))}
+                        placeholder="例如 sub，留空为根路径"
+                        helper="与 3xui-cf-pages 的 SUB_PREFIX 一致，保存时自动同步 URL 路径"
+                      />
+                    </TwoCol>
+                    <Box sx={{ px: 1.25, py: 0.9, borderRadius: 1.5, bgcolor: "action.hover" }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontFamily: "monospace", wordBreak: "break-all" }}>
+                        订阅 URL 预览：{(subCfg.cf_kv_public_domain.trim().replace(/\/+$/, "") || "https://<your-cf-domain>") + cfSubPathFromPrefix(subCfg.cf_kv_sub_prefix)}&lt;token&gt;
+                      </Typography>
+                    </Box>
+                    <TwoCol>
+                      <ReadyField
+                        ready={!loading || Boolean(subCfg.sub_path)}
+                        label="流量变化阈值（MB）"
+                        type="number"
+                        value={subCfg.cf_kv_traffic_threshold_mb}
+                        onChange={(value) => setSubCfg((current) => ({ ...current, cf_kv_traffic_threshold_mb: value }))}
+                        helper="仅流量变化达到该阈值时推送，默认 10 MB，减少 KV 写入次数"
+                      />
+                      <ReadyField
+                        ready={!loading || Boolean(subCfg.sub_path)}
+                        label="最长保鲜间隔（分钟）"
+                        type="number"
+                        value={subCfg.cf_kv_max_stale_minutes}
+                        onChange={(value) => setSubCfg((current) => ({ ...current, cf_kv_max_stale_minutes: value }))}
+                        helper="未达流量阈值时每隔该时长强制刷新一次，默认 60 分钟，0 为关闭"
+                      />
+                    </TwoCol>
+                    {settings.cf_kv_last_sync_at || settings.cf_kv_last_error ? (
+                      <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: "action.hover", fontSize: 13 }}>
+                        {settings.cf_kv_last_sync_at ? (
+                          <Typography variant="body2" color="text.secondary">
+                            最近同步：{formatWhen(settings.cf_kv_last_sync_at)}
+                            {settings.cf_kv_last_result
+                              ? `（共 ${settings.cf_kv_last_result.total ?? 0}，推送 ${settings.cf_kv_last_result.pushed ?? 0}，跳过 ${settings.cf_kv_last_result.skipped ?? 0}，删除 ${settings.cf_kv_last_result.deleted ?? 0}）`
+                              : ""}
+                          </Typography>
+                        ) : null}
+                        {settings.cf_kv_last_error ? (
+                          <Typography variant="body2" color="error" sx={{ mt: 0.5, wordBreak: "break-all" }}>
+                            最近错误：{settings.cf_kv_last_error}
+                          </Typography>
+                        ) : null}
+                      </Box>
+                    ) : null}
+                    <Stack direction="row" spacing={1} useFlexGap sx={{ justifyContent: "flex-end", flexWrap: "wrap" }}>
+                      {settings.cf_kv_api_token_set ? (
+                        <Button
+                          variant="outlined"
+                          color="error"
+                          onClick={() => void saveCFKVSettings({ cf_kv_clear_token: true }).catch(() => undefined)}
+                        >
+                          清除 Token
+                        </Button>
+                      ) : null}
+                      <Button
+                        variant="outlined"
+                        disabled={cfKVSyncing || !settings.cf_kv_api_token_set || !subCfg.cf_kv_account_id || !subCfg.cf_kv_namespace_id}
+                        onClick={() => void triggerCFKVSync(true)}
+                      >
+                        {cfKVSyncing ? "同步中..." : "立即同步到 CF KV"}
+                      </Button>
+                      <Button variant="contained" onClick={() => void saveCFKVSettings().catch(() => undefined)}>
+                        保存 CF KV 配置
+                      </Button>
+                    </Stack>
+                  </>
+                )}
               </Stack>
             </Paper>
+
+            {!subCfg.cf_kv_enabled ? (
+              <>
+                <Paper
+                  variant="outlined"
+                  className="admin-tab-panel"
+                  sx={{ ...panelSx, p: { xs: 1.5, sm: 2 } }}
+                >
+                  <Stack spacing={2}>
+                    <Box>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                        本机路径监听
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        由本机面板或反向代理直接对外提供订阅接口。
+                      </Typography>
+                    </Box>
+                    <ThreeCol>
+                      <ReadyField
+                        ready={!loading || Boolean(subCfg.sub_listen_port || subCfg.sub_path)}
+                        label={t("nodemgt.sub_listen_port")}
+                        value={subCfg.sub_listen_port}
+                        onChange={(value) => setSubCfg((current) => ({ ...current, sub_listen_port: value }))}
+                        helper={t("nodemgt.sub_listen_port_help")}
+                      />
+                      <ReadyField
+                        ready={!loading || Boolean(subCfg.sub_listen_port || subCfg.sub_path)}
+                        label={t("nodemgt.sub_public_port")}
+                        value={subCfg.sub_public_port}
+                        onChange={(value) => setSubCfg((current) => ({ ...current, sub_public_port: value }))}
+                        helper={t("nodemgt.sub_public_port_help")}
+                      />
+                      <ReadyField
+                        ready={!loading || Boolean(subCfg.sub_listen_port || subCfg.sub_path)}
+                        label={t("nodemgt.sub_path")}
+                        value={subCfg.sub_path}
+                        onChange={(value) => setSubCfg((current) => ({ ...current, sub_path: value }))}
+                        helper={t("nodemgt.sub_path_help")}
+                      />
+                    </ThreeCol>
+                    <ReadyField
+                      ready={!loading || Boolean(subCfg.sub_public_host || subCfg.sub_path)}
+                      label={t("nodemgt.sub_public_host")}
+                      value={subCfg.sub_public_host}
+                      onChange={(value) => setSubCfg((current) => ({ ...current, sub_public_host: value }))}
+                      helper={t("nodemgt.sub_public_host_help")}
+                    />
+                    <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+                      <Button variant="contained" onClick={() => void saveSubSettings().catch(() => undefined)}>
+                        {t("nodemgt.save_sub_settings")}
+                      </Button>
+                    </Box>
+                  </Stack>
+                </Paper>
+                <SettingCardSwitch
+                  title={t("nodemgt.sub_reuse_https")}
+                  description={t("nodemgt.sub_reuse_https_help")}
+                  defaultChecked={Boolean(subCfg.sub_reuse_https)}
+                  onChange={async (next) => {
+                    await saveSubSettings({
+                      sub_reuse_https: next,
+                      sub_public_host: subCfg.sub_public_host,
+                    });
+                  }}
+                />
+                <SettingCardSwitch
+                  title={t("nodemgt.sub_publish_name")}
+                  description={t("nodemgt.sub_publish_name_help")}
+                  defaultChecked={Boolean(subCfg.sub_publish_name)}
+                  onChange={async (next) => {
+                    await saveSubSettings({ sub_publish_name: next });
+                  }}
+                />
+                <SettingCardSwitch
+                  title={t("nodemgt.sub_publish_userinfo")}
+                  description={t("nodemgt.sub_publish_userinfo_help")}
+                  defaultChecked={Boolean(subCfg.sub_publish_userinfo)}
+                  onChange={async (next) => {
+                    await saveSubSettings({ sub_publish_userinfo: next });
+                  }}
+                />
+              </>
+            ) : null}
           </Stack>
           ) : null}
         </SubPageTabs.Root>
