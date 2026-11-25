@@ -32,7 +32,7 @@ import {
 } from "./TrafficStatsHelpers";
 
 export default function TrafficStatsPanel({
-  nodeOptions,
+  inboundOptions,
   userOptions,
 }: {
   nodeOptions: OptionItem[];
@@ -45,7 +45,7 @@ export default function TrafficStatsPanel({
 
   const [days, setDays] = useState<number>(7);
   const [userFilter, setUserFilter] = useState<string>("");
-  const [domainNode, setDomainNode] = useState<string>("");
+  const [domainInbound, setDomainInbound] = useState<string>("");
   const [windowKey, setWindowKey] = useState<DomainWindow>("30m");
   const [search, setSearch] = useState<string>("");
   const [debouncedSearch, setDebouncedSearch] = useState<string>("");
@@ -72,7 +72,7 @@ export default function TrafficStatsPanel({
       const params: Record<string, unknown> = {
         days,
         user_id: userFilter,
-        domain_node_uuid: domainNode,
+        domain_inbound_id: domainInbound,
         window: windowKey,
         search: debouncedSearch,
       };
@@ -89,7 +89,7 @@ export default function TrafficStatsPanel({
     } finally {
       setLoading(false);
     }
-  }, [appliedCustom.end, appliedCustom.start, call, days, debouncedSearch, domainNode, userFilter, windowKey]);
+  }, [appliedCustom.end, appliedCustom.start, call, days, debouncedSearch, domainInbound, userFilter, windowKey]);
 
   useEffect(() => {
     void loadSummary();
@@ -118,7 +118,7 @@ export default function TrafficStatsPanel({
     }
   };
 
-  const nodes = summary?.nodes ?? [];
+  const inboundRows = summary?.inbounds ?? [];
   const totalBytes = summary?.total_bytes ?? 0;
   const totalUp = summary?.total_up_bytes ?? 0;
   const totalDown = summary?.total_down_bytes ?? 0;
@@ -281,7 +281,7 @@ export default function TrafficStatsPanel({
             <Box>
               <Typography variant="caption" color="text.secondary">有流量节点</Typography>
               <Typography variant="h5" sx={{ fontWeight: 700, mt: 0.25 }}>
-                {summary?.active_node_count ?? nodes.length} <Typography component="span" variant="body2">个</Typography>
+                {summary?.active_inbound_count ?? inboundRows.length} <Typography component="span" variant="body2">个</Typography>
               </Typography>
             </Box>
             <Typography variant="caption" color="text.disabled" sx={{ display: { xs: "none", lg: "block" } }}>
@@ -315,10 +315,10 @@ export default function TrafficStatsPanel({
                 mb: 1.5,
               }}
             >
-              {nodes.map((n, i) => (
+              {inboundRows.map((n, i) => (
                 <Box
-                  key={n.node_uuid}
-                  title={`${n.node_name || n.node_uuid}: ${n.share_pct.toFixed(1)}%`}
+                  key={`${n.node_uuid}:${n.inbound_id}`}
+                  title={`${n.inbound_name || n.inbound_id}: ${n.share_pct.toFixed(1)}%`}
                   sx={{
                     width: `${Math.max(n.share_pct, 0.5)}%`,
                     bgcolor: NODE_COLORS[i % NODE_COLORS.length],
@@ -327,16 +327,16 @@ export default function TrafficStatsPanel({
               ))}
             </Box>
             <Stack spacing={0.85}>
-              {nodes.length === 0 ? (
+              {inboundRows.length === 0 ? (
                 <Typography variant="caption" color="text.secondary">
                   {enabled ? "暂无节点流量记录" : "统计已关闭"}
                 </Typography>
               ) : (
-                nodes.map((n, i) => (
-                  <Stack key={n.node_uuid} direction="row" sx={{ alignItems: "center", justifyContent: "space-between" }}>
+                inboundRows.map((n, i) => (
+                  <Stack key={`${n.node_uuid}:${n.inbound_id}`} direction="row" sx={{ alignItems: "center", justifyContent: "space-between" }}>
                     <Stack direction="row" spacing={1} sx={{ alignItems: "center", minWidth: 0 }}>
                       <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: NODE_COLORS[i % NODE_COLORS.length], flexShrink: 0 }} />
-                      <Typography variant="body2" noWrap>{n.node_name || n.node_uuid}</Typography>
+                      <Typography variant="body2" noWrap>{n.inbound_name || n.inbound_id}</Typography>
                     </Stack>
                     <Typography variant="body2" color="text.secondary" sx={{ fontVariantNumeric: "tabular-nums" }}>
                       {n.share_pct.toFixed(1)}%
@@ -360,7 +360,7 @@ export default function TrafficStatsPanel({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {nodes.length === 0 ? (
+                {inboundRows.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
                       {enabled ? "暂无节点流量数据" : "统计已关闭，开启右上角开关后自动采集"}
@@ -368,12 +368,17 @@ export default function TrafficStatsPanel({
                   </TableRow>
                 ) : (
                   <>
-                    {nodes.map((row, idx) => (
-                      <TableRow key={row.node_uuid}>
+                    {inboundRows.map((row, idx) => (
+                      <TableRow key={`${row.node_uuid}:${row.inbound_id}`}>
                         <TableCell className="font-medium">
                           <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-                            <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: NODE_COLORS[idx % NODE_COLORS.length] }} />
-                            <span>{row.node_name || row.node_uuid}</span>
+                            <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: NODE_COLORS[idx % NODE_COLORS.length], flexShrink: 0 }} />
+                            <span>{row.inbound_name || row.inbound_id}</span>
+                            {row.node_name ? (
+                              <Typography component="span" variant="caption" color="text.secondary">
+                                ({row.node_name})
+                              </Typography>
+                            ) : null}
                           </Stack>
                         </TableCell>
                         <TableCell className="text-right tabular-nums">{formatBytes(row.up_bytes)}</TableCell>
@@ -407,9 +412,9 @@ export default function TrafficStatsPanel({
       {/* Section 2: 域名流量分析 */}
       <TrafficDomainAnalysisCard
         enabled={enabled}
-        nodeOptions={nodeOptions}
-        domainNode={domainNode}
-        onDomainNodeChange={setDomainNode}
+        nodeOptions={inboundOptions}
+        domainNode={domainInbound}
+        onDomainNodeChange={setDomainInbound}
         search={search}
         onSearchChange={setSearch}
         windowKey={windowKey}

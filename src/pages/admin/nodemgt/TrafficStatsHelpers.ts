@@ -9,6 +9,17 @@ export type NodeStatRow = {
   share_pct: number;
 };
 
+export type InboundStatRow = {
+  node_uuid: string;
+  node_name: string;
+  inbound_id: string;
+  inbound_name: string;
+  up_bytes: number;
+  down_bytes: number;
+  total_bytes: number;
+  share_pct: number;
+};
+
 export type DomainBucketTotal = {
   bucket_ts: number;
   up_bytes: number;
@@ -37,7 +48,9 @@ export type StatsSummary = {
   total_down_bytes: number;
   total_bytes: number;
   active_node_count: number;
+  active_inbound_count?: number;
   nodes: NodeStatRow[];
+  inbounds?: InboundStatRow[];
   domain_window: "30m" | "24h" | "7d" | "custom";
   domain_granularity_sec: number;
   domain_start_ts: number;
