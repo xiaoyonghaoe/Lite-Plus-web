@@ -4185,7 +4185,7 @@ export default function PlusAdminPage() {
           <SubscriptionTemplates subs={nonRelaySubs} plans={plans} initial={templates} onChange={rememberTemplates} />
         </Box>
       ) : null}
-      {(tab === "subscriptions" && (subPage === "access" || subPage === "templates")) || (tab === "certs" && certPage === "issuer") ? null : (
+      {tab === "stats" || (tab === "subscriptions" && (subPage === "access" || subPage === "templates")) || (tab === "certs" && certPage === "issuer") ? null : (
       <AdminListShell>
           <AdminListFiltersBar>
             <Stack direction="row" spacing={1.5} useFlexGap sx={{ flexWrap: { xs: "wrap", md: "nowrap" }, alignItems: "center" }}>
