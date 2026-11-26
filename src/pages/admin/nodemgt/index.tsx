@@ -613,6 +613,7 @@ function inboundForm(row?: any): FormMap {
     firewall_allow_nodes: Array.isArray(row?.firewall_allow_nodes) ? row.firewall_allow_nodes.join(",") : "",
     virtual_tags: Array.isArray(row?.virtual_tags) ? row.virtual_tags.join(",") : "",
     max_conns_per_ip: row?.max_conns_per_ip == null ? "50" : str(row.max_conns_per_ip),
+    anytls_keepalive: row?.anytls_keepalive == null ? "30,30,0" : str(row.anytls_keepalive),
   };
 }
 
@@ -1150,6 +1151,7 @@ function inboundUpsertBody(form: FormMap) {
       const n = Number.parseInt(raw, 10);
       return Number.isFinite(n) && n >= 0 ? n : 50;
     })(),
+    anytls_keepalive: form.protocol === "anytls" ? String(form.anytls_keepalive ?? "").trim() : undefined,
   };
 }
 
@@ -5307,6 +5309,15 @@ export default function PlusAdminPage() {
                   }}
                   options={transportsFor(sheet.form.protocol).map((value) => ({ value, label: t(transportLabelKey(value)) }))}
                 />
+            {sheet.form.protocol === "anytls" ? (
+              <Field
+                label="小火箭 Keepalive（AnyTLS）"
+                value={sheet.form.anytls_keepalive}
+                onChange={(value) => setForm({ anytls_keepalive: value })}
+                placeholder="30,30,0"
+                helper="下发到 anytls:// 订阅链接的 keepalive 参数（检查间隔,空闲超时,最小空闲连接，默认 30,30,0，留空则不下发）"
+              />
+            ) : null}
             {inboundShowsUDPFragment(sheet.form.protocol, sheet.form.transport, sheet.form.core) ? (
               <SheetSwitch
                 title={t("nodemgt.udp_fragment")}
