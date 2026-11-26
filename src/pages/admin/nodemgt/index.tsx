@@ -2475,19 +2475,27 @@ type GeoRuleSourceItem = {
   kind: "geosite" | "geoip";
   code: string;
   label: string;
-  url: string;
+  srs_url: string;
+  dat_url: string;
   enabled: boolean;
+  builtin?: boolean;
 };
 
-function geoSourcesFromSettings(s?: Record<string, any>): GeoRuleSourceItem[] {
-  const raw = Array.isArray(s?.geo_rule_sources) ? s.geo_rule_sources : [];
-  return raw.map((item: any) => ({
+function geoSourcesFromList(raw: any): GeoRuleSourceItem[] {
+  const list = Array.isArray(raw) ? raw : [];
+  return list.map((item: any) => ({
     kind: item?.kind === "geoip" ? "geoip" : "geosite",
     code: str(item?.code),
     label: str(item?.label),
-    url: str(item?.url),
+    srs_url: str(item?.srs_url || item?.url),
+    dat_url: str(item?.dat_url),
     enabled: Boolean(item?.enabled),
+    builtin: Boolean(item?.builtin),
   }));
+}
+
+function geoSourcesFromSettings(s?: Record<string, any>): GeoRuleSourceItem[] {
+  return geoSourcesFromList(s?.geo_rule_sources);
 }
 
 function splitCsvTokens(raw: string): string[] {
@@ -2497,20 +2505,104 @@ function splitCsvTokens(raw: string): string[] {
     .filter(Boolean);
 }
 
-function hasCsvToken(raw: string, token: string): boolean {
-  const target = token.trim().toLowerCase();
-  return splitCsvTokens(raw).some((item) => item.toLowerCase() === target);
-}
+type RouteRuleOption = {
+  token: string;
+  label: string;
+  group: string;
+};
 
-function toggleCsvToken(raw: string, token: string): string {
-  const target = token.trim();
-  const targetLower = target.toLowerCase();
-  const list = splitCsvTokens(raw);
-  const exists = list.some((item) => item.toLowerCase() === targetLower);
-  const next = exists
-    ? list.filter((item) => item.toLowerCase() !== targetLower)
-    : [...list, target];
-  return next.join(",");
+function RouteRuleAutocomplete({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder,
+  helper,
+}: {
+  label: string;
+  value: string;
+  onChange: (next: string) => void;
+  options: RouteRuleOption[];
+  placeholder?: string;
+  helper?: string;
+}) {
+  const [inputValue, setInputValue] = useState("");
+  const tokens = useMemo(() => splitCsvTokens(value), [value]);
+  const optionByToken = useMemo(() => {
+    const map = new Map<string, RouteRuleOption>();
+    for (const opt of options) map.set(opt.token.toLowerCase(), opt);
+    return map;
+  }, [options]);
+
+  const commitTokens = (rawItems: (string | RouteRuleOption)[]) => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const item of rawItems) {
+      const text = typeof item === "string" ? item : item.token;
+      for (const part of splitCsvTokens(text)) {
+        const key = part.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(part);
+      }
+    }
+    onChange(out.join(","));
+  };
+
+  return (
+    <Autocomplete<RouteRuleOption, true, false, true>
+      multiple
+      freeSolo
+      size="small"
+      options={options}
+      groupBy={(opt) => opt.group}
+      value={tokens}
+      inputValue={inputValue}
+      onInputChange={(_, nextInput, reason) => {
+        if (reason === "input" && nextInput.includes(",")) {
+          const parts = splitCsvTokens(nextInput);
+          if (parts.length > 0) {
+            commitTokens([...tokens, ...parts]);
+          }
+          setInputValue("");
+          return;
+        }
+        setInputValue(nextInput);
+      }}
+      onChange={(_, nextValues) => {
+        commitTokens(nextValues);
+        setInputValue("");
+      }}
+      onBlur={() => {
+        const pending = inputValue.trim();
+        if (pending) {
+          commitTokens([...tokens, pending]);
+          setInputValue("");
+        }
+      }}
+      filterSelectedOptions
+      isOptionEqualToValue={(option, val) => {
+        const tVal = typeof val === "string" ? val : val.token;
+        return option.token.toLowerCase() === tVal.toLowerCase();
+      }}
+      getOptionLabel={(option) => {
+        if (typeof option === "string") {
+          const matched = optionByToken.get(option.toLowerCase());
+          return matched && matched.label !== matched.token ? `${matched.token} · ${matched.label}` : option;
+        }
+        return option.label && option.label !== option.token ? `${option.token} · ${option.label}` : option.token;
+      }}
+      renderInput={(params) => (
+        <TextField
+          {...params}
+          label={label}
+          placeholder={tokens.length === 0 ? placeholder : ""}
+          helperText={helper}
+          sx={settingsFieldSx}
+        />
+      )}
+    />
+  );
 }
 
 export default function PlusAdminPage() {
@@ -3497,20 +3589,49 @@ export default function PlusAdminPage() {
           kind: r.kind === "geoip" ? "geoip" : "geosite",
           code: r.code.trim().toLowerCase().replace(/^(geosite|geoip):/i, ""),
           label: r.label.trim(),
-          url: r.url.trim(),
+          url: r.srs_url.trim(),
+          srs_url: r.srs_url.trim(),
+          dat_url: r.dat_url.trim(),
           enabled: Boolean(r.enabled),
         }))
         .filter((r) => r.code !== "");
       const next = await call("admin:nodemgt.settings.set", { geo_rule_sources: cleaned });
       setSettings(next);
       setGeoSources(geoSourcesFromSettings(next as Record<string, any>));
-      toast.success("Geodata 规则源已保存");
+      toast.success("自定义 Geodata 规则源已保存");
     } catch (err) {
       toast.error(nodemgtErrorMessage(err, t));
     } finally {
       setGeoSaving(false);
     }
   };
+
+  const geoBuiltins = useMemo(
+    () => geoSourcesFromList(settings?.geo_rule_builtins || settings?.geo_rule_defaults),
+    [settings?.geo_rule_builtins, settings?.geo_rule_defaults],
+  );
+
+  const routeRuleOptionsFor = useCallback(
+    (kind: "geosite" | "geoip"): RouteRuleOption[] => {
+      const out: RouteRuleOption[] = [];
+      const seen = new Set<string>();
+      for (const src of geoSources) {
+        if (!src.enabled || src.kind !== kind || !src.code) continue;
+        const token = `${kind}:${src.code}`;
+        seen.add(token.toLowerCase());
+        out.push({ token, label: src.label || token, group: "自定义规则" });
+      }
+      for (const src of geoBuiltins) {
+        if (src.kind !== kind || !src.code) continue;
+        const token = `${kind}:${src.code}`;
+        if (seen.has(token.toLowerCase())) continue;
+        seen.add(token.toLowerCase());
+        out.push({ token, label: src.label || token, group: "内置上游规则" });
+      }
+      return out;
+    },
+    [geoSources, geoBuiltins],
+  );
 
   const rememberTemplates = useCallback((next: NodemgtTemplateList) => {
     setTemplates(next);
@@ -4524,114 +4645,149 @@ export default function PlusAdminPage() {
             </SubPageTabs.List>
           </AdminSheetTabs>
           {routePage === "geodata" ? (
-            <Paper variant="outlined" className="admin-tab-panel" sx={{ ...panelSx, p: { xs: 1.5, sm: 2 }, mt: 2 }}>
-              <Stack spacing={2}>
-                <Box>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                    Geodata 规则源管理（Geosite / GeoIP）
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                    勾选启用需要使用的规则源，启用后的规则会在「新建/编辑路由」的域名和 IP 栏中显示为快捷选项（仍支持自由输入文本）。sing-box 探针下发配置时会自动按此处配置的 HTTPS URL 下载对应的 .srs 规则集。
-                  </Typography>
-                </Box>
+            <Stack spacing={1.5} sx={{ mt: 2 }}>
+              <Paper variant="outlined" className="admin-tab-panel" sx={{ ...panelSx, p: { xs: 1.5, sm: 2 } }}>
                 <Stack spacing={1.25}>
-                  {geoSources.map((src, idx) => (
-                    <Paper
-                      key={`${src.kind}-${src.code}-${idx}`}
-                      variant="outlined"
-                      sx={{ p: 1.25, borderRadius: 1.5, bgcolor: src.enabled ? "background.paper" : "action.hover" }}
-                    >
-                      <Stack direction={{ xs: "column", md: "row" }} spacing={1} useFlexGap sx={{ alignItems: { md: "center" } }}>
-                        <Switch
-                          size="small"
-                          checked={src.enabled}
-                          onChange={(_, checked) =>
-                            setGeoSources((list) => list.map((item, i) => (i === idx ? { ...item, enabled: checked } : item)))
-                          }
-                        />
-                        <TextField
-                          select
-                          size="small"
-                          label="类型"
-                          value={src.kind}
-                          onChange={(e) =>
-                            setGeoSources((list) =>
-                              list.map((item, i) => (i === idx ? { ...item, kind: e.target.value === "geoip" ? "geoip" : "geosite" } : item)),
-                            )
-                          }
-                          sx={{ ...settingsFieldSx, minWidth: 105 }}
+                  <Box>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                      内置上游 Geodata 规则（开箱即用）
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                      以下常用规则已内置上游地址（sing-box 自动下载 .srs，Xray 自动下载 Loyalsoldier .dat），在新建/编辑路由的下拉框中可直接选择，无需重复配置。
+                    </Typography>
+                  </Box>
+                  <Stack direction="row" spacing={0.75} useFlexGap sx={{ flexWrap: "wrap" }}>
+                    {geoBuiltins.map((src) => (
+                      <Chip
+                        key={`builtin-${src.kind}:${src.code}`}
+                        size="small"
+                        variant="outlined"
+                        label={`${src.kind}:${src.code}${src.label && src.label !== `${src.kind}:${src.code}` ? ` · ${src.label}` : ""}`}
+                      />
+                    ))}
+                  </Stack>
+                </Stack>
+              </Paper>
+
+              <Paper variant="outlined" className="admin-tab-panel" sx={{ ...panelSx, p: { xs: 1.5, sm: 2 } }}>
+                <Stack spacing={2}>
+                  <Box>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                      自定义 Geodata 规则源
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                      新增自定义规则或覆盖内置规则的下载地址。可同时配置 sing-box 的 .srs 地址与 Xray 的 .dat 地址；启用后将自动出现在路由编辑下拉框中。
+                    </Typography>
+                  </Box>
+                  {geoSources.length === 0 ? (
+                    <Box sx={{ p: 2, borderRadius: 1.5, bgcolor: "action.hover", textAlign: "center" }}>
+                      <Typography variant="body2" color="text.secondary">
+                        暂无自定义规则源，点击下方「添加自定义规则」即可新增。
+                      </Typography>
+                    </Box>
+                  ) : (
+                    <Stack spacing={1.25}>
+                      {geoSources.map((src, idx) => (
+                        <Paper
+                          key={`${src.kind}-${src.code}-${idx}`}
+                          variant="outlined"
+                          sx={{ p: 1.25, borderRadius: 1.5, bgcolor: src.enabled ? "background.paper" : "action.hover" }}
                         >
-                          <MenuItem value="geosite">geosite</MenuItem>
-                          <MenuItem value="geoip">geoip</MenuItem>
-                        </TextField>
-                        <TextField
-                          size="small"
-                          label="规则标识"
-                          value={src.code}
-                          placeholder="china-list"
-                          onChange={(e) =>
-                            setGeoSources((list) => list.map((item, i) => (i === idx ? { ...item, code: e.target.value } : item)))
-                          }
-                          sx={{ ...settingsFieldSx, minWidth: 145 }}
-                        />
-                        <TextField
-                          size="small"
-                          label="显示名称"
-                          value={src.label}
-                          placeholder="中国域名"
-                          onChange={(e) =>
-                            setGeoSources((list) => list.map((item, i) => (i === idx ? { ...item, label: e.target.value } : item)))
-                          }
-                          sx={{ ...settingsFieldSx, minWidth: 165 }}
-                        />
-                        <TextField
-                          size="small"
-                          label="下载 URL（.srs，内置规则可留空）"
-                          value={src.url}
-                          placeholder="https://raw.githubusercontent.com/..."
-                          onChange={(e) =>
-                            setGeoSources((list) => list.map((item, i) => (i === idx ? { ...item, url: e.target.value } : item)))
-                          }
-                          sx={{ ...settingsFieldSx, flex: 1, minWidth: 220 }}
-                        />
-                        <DeleteButton
-                          onClick={() => setGeoSources((list) => list.filter((_, i) => i !== idx))}
-                        />
-                      </Stack>
-                    </Paper>
-                  ))}
-                </Stack>
-                <Stack direction="row" spacing={1} useFlexGap sx={{ justifyContent: "flex-end", flexWrap: "wrap" }}>
-                  <Button
-                    variant="outlined"
-                    startIcon={<Plus size={16} />}
-                    onClick={() =>
-                      setGeoSources((list) => [
-                        ...list,
-                        { kind: "geosite", code: "", label: "", url: "", enabled: true },
-                      ])
-                    }
-                  >
-                    添加规则源
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    onClick={() => {
-                      const defaults = Array.isArray(settings?.geo_rule_defaults) ? settings.geo_rule_defaults : [];
-                      if (defaults.length > 0) {
-                        setGeoSources(geoSourcesFromSettings({ geo_rule_sources: defaults }));
-                        toast.success("已载入标准来源，请点击保存生效");
+                          <Stack spacing={1.25}>
+                            <Stack direction={{ xs: "column", md: "row" }} spacing={1} useFlexGap sx={{ alignItems: { md: "center" } }}>
+                              <Switch
+                                size="small"
+                                checked={src.enabled}
+                                onChange={(_, checked) =>
+                                  setGeoSources((list) => list.map((item, i) => (i === idx ? { ...item, enabled: checked } : item)))
+                                }
+                              />
+                              <TextField
+                                select
+                                size="small"
+                                label="类型"
+                                value={src.kind}
+                                onChange={(e) =>
+                                  setGeoSources((list) =>
+                                    list.map((item, i) => (i === idx ? { ...item, kind: e.target.value === "geoip" ? "geoip" : "geosite" } : item)),
+                                  )
+                                }
+                                sx={{ ...settingsFieldSx, minWidth: 110 }}
+                              >
+                                <MenuItem value="geosite">geosite</MenuItem>
+                                <MenuItem value="geoip">geoip</MenuItem>
+                              </TextField>
+                              <TextField
+                                size="small"
+                                label="规则标识"
+                                value={src.code}
+                                placeholder="例如 my-list 或覆盖 china-list"
+                                onChange={(e) =>
+                                  setGeoSources((list) => list.map((item, i) => (i === idx ? { ...item, code: e.target.value } : item)))
+                                }
+                                sx={{ ...settingsFieldSx, minWidth: 180, flex: 1 }}
+                              />
+                              <TextField
+                                size="small"
+                                label="显示名称"
+                                value={src.label}
+                                placeholder="自定义分流列表"
+                                onChange={(e) =>
+                                  setGeoSources((list) => list.map((item, i) => (i === idx ? { ...item, label: e.target.value } : item)))
+                                }
+                                sx={{ ...settingsFieldSx, minWidth: 180, flex: 1 }}
+                              />
+                              <DeleteButton
+                                onClick={() => setGeoSources((list) => list.filter((_, i) => i !== idx))}
+                              />
+                            </Stack>
+                            <TwoCol>
+                              <TextField
+                                size="small"
+                                label="sing-box 规则集地址（.srs，可选）"
+                                value={src.srs_url}
+                                placeholder="https://raw.githubusercontent.com/.../xxx.srs"
+                                onChange={(e) =>
+                                  setGeoSources((list) => list.map((item, i) => (i === idx ? { ...item, srs_url: e.target.value } : item)))
+                                }
+                                sx={settingsFieldSx}
+                              />
+                              <TextField
+                                size="small"
+                                label="Xray 规则库地址（.dat，可选）"
+                                value={src.dat_url}
+                                placeholder="https://github.com/.../geosite.dat"
+                                onChange={(e) =>
+                                  setGeoSources((list) => list.map((item, i) => (i === idx ? { ...item, dat_url: e.target.value } : item)))
+                                }
+                                sx={settingsFieldSx}
+                              />
+                            </TwoCol>
+                          </Stack>
+                        </Paper>
+                      ))}
+                    </Stack>
+                  )}
+                  <Stack direction="row" spacing={1} useFlexGap sx={{ justifyContent: "flex-end", flexWrap: "wrap" }}>
+                    <Button
+                      variant="outlined"
+                      startIcon={<Plus size={16} />}
+                      onClick={() =>
+                        setGeoSources((list) => [
+                          ...list,
+                          { kind: "geosite", code: "", label: "", srs_url: "", dat_url: "", enabled: true },
+                        ])
                       }
-                    }}
-                  >
-                    使用标准来源
-                  </Button>
-                  <Button variant="contained" disabled={geoSaving} onClick={() => void saveGeoSources(geoSources)}>
-                    {geoSaving ? "保存中..." : "保存规则源"}
-                  </Button>
+                    >
+                      添加自定义规则
+                    </Button>
+                    <Button variant="contained" disabled={geoSaving} onClick={() => void saveGeoSources(geoSources)}>
+                      {geoSaving ? "保存中..." : "保存配置"}
+                    </Button>
+                  </Stack>
                 </Stack>
-              </Stack>
-            </Paper>
+              </Paper>
+            </Stack>
           ) : null}
         </SubPageTabs.Root>
       ) : null}
@@ -6229,56 +6385,22 @@ export default function PlusAdminPage() {
             {sheetTab === "match" ? (
               <>
             <Typography color="text.secondary" sx={{ fontSize: 13 }}>{t("nodemgt.route_conditions_help")}</Typography>
-            <Stack spacing={0.75}>
-              <Field label={t("nodemgt.col_domain")} value={sheet.form.domain} onChange={(value) => setForm({ domain: value })} helper={t("nodemgt.route_domain_help")} placeholder="geosite:china-list" />
-              {geoSources.some((src) => src.enabled && src.kind === "geosite" && src.code) ? (
-                <Stack direction="row" spacing={0.75} useFlexGap sx={{ flexWrap: "wrap", alignItems: "center" }}>
-                  <Typography variant="caption" color="text.secondary">已启用规则：</Typography>
-                  {geoSources
-                    .filter((src) => src.enabled && src.kind === "geosite" && src.code)
-                    .map((src) => {
-                      const token = `geosite:${src.code}`;
-                      const selected = hasCsvToken(sheet.form.domain, token);
-                      return (
-                        <Chip
-                          key={token}
-                          size="small"
-                          clickable
-                          color={selected ? "primary" : "default"}
-                          variant={selected ? "filled" : "outlined"}
-                          label={src.label && src.label !== token ? `${token} · ${src.label}` : token}
-                          onClick={() => setForm({ domain: toggleCsvToken(sheet.form.domain, token) })}
-                        />
-                      );
-                    })}
-                </Stack>
-              ) : null}
-            </Stack>
-            <Stack spacing={0.75}>
-              <Field label={t("nodemgt.col_ip")} value={sheet.form.ip} onChange={(value) => setForm({ ip: value })} helper={t("nodemgt.route_ip_help")} placeholder="geoip:cn" />
-              {geoSources.some((src) => src.enabled && src.kind === "geoip" && src.code) ? (
-                <Stack direction="row" spacing={0.75} useFlexGap sx={{ flexWrap: "wrap", alignItems: "center" }}>
-                  <Typography variant="caption" color="text.secondary">已启用规则：</Typography>
-                  {geoSources
-                    .filter((src) => src.enabled && src.kind === "geoip" && src.code)
-                    .map((src) => {
-                      const token = `geoip:${src.code}`;
-                      const selected = hasCsvToken(sheet.form.ip, token);
-                      return (
-                        <Chip
-                          key={token}
-                          size="small"
-                          clickable
-                          color={selected ? "primary" : "default"}
-                          variant={selected ? "filled" : "outlined"}
-                          label={src.label && src.label !== token ? `${token} · ${src.label}` : token}
-                          onClick={() => setForm({ ip: toggleCsvToken(sheet.form.ip, token) })}
-                        />
-                      );
-                    })}
-                </Stack>
-              ) : null}
-            </Stack>
+            <RouteRuleAutocomplete
+              label={t("nodemgt.col_domain")}
+              value={sheet.form.domain}
+              onChange={(value) => setForm({ domain: value })}
+              options={routeRuleOptionsFor("geosite")}
+              placeholder="下拉选择内置/自定义规则，或直接输入域名后回车"
+              helper={t("nodemgt.route_domain_help")}
+            />
+            <RouteRuleAutocomplete
+              label={t("nodemgt.col_ip")}
+              value={sheet.form.ip}
+              onChange={(value) => setForm({ ip: value })}
+              options={routeRuleOptionsFor("geoip")}
+              placeholder="下拉选择内置/自定义规则，或直接输入 IP/CIDR 后回车"
+              helper={t("nodemgt.route_ip_help")}
+            />
             <MultiSelectField
               label={t("nodemgt.route_protocol")}
               value={sheet.form.protocol ? sheet.form.protocol.split(",").filter(Boolean) : []}
