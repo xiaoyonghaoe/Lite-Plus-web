@@ -2642,9 +2642,19 @@ export default function PlusAdminPage() {
     location.pathname.endsWith("/templates") ? "templates" : "list",
   );
   const [certPage, setCertPage] = useState<"list" | "issuer">("list");
-  const [routePage, setRoutePage] = useState<"list" | "geodata">("list");
+  const [routePage, setRoutePage] = useState<"list" | "test" | "geodata">("list");
   const [geoSources, setGeoSources] = useState<GeoRuleSourceItem[]>(() => geoSourcesFromSettings(cached?.settings));
   const [geoSaving, setGeoSaving] = useState(false);
+  const [routeTest, setRouteTest] = useState({
+    node_uuid: "",
+    inbound_id: "",
+    user_id: "",
+    target: "",
+    port: "443",
+    network: "tcp",
+  });
+  const [routeTesting, setRouteTesting] = useState(false);
+  const [routeTestResult, setRouteTestResult] = useState<any>(null);
   const [loading, setLoading] = useState(() => !cached);
   const firstLoad = useRef(!cached);
   const [filtersByTab, setFiltersByTab] = useState<Partial<Record<TabKey, ListFilters>>>({});
@@ -3603,6 +3613,38 @@ export default function PlusAdminPage() {
       toast.error(nodemgtErrorMessage(err, t));
     } finally {
       setGeoSaving(false);
+    }
+  };
+
+  const runRouteTest = async (overrideTarget?: string) => {
+    const target = (overrideTarget ?? routeTest.target).trim();
+    const nodeUUID = routeTest.node_uuid || nodeOptions[0]?.value || "";
+    if (!nodeUUID) {
+      toast.error("请先选择节点");
+      return;
+    }
+    if (!target) {
+      toast.error("请输入要测试的域名或 IP");
+      return;
+    }
+    if (overrideTarget !== undefined) {
+      setRouteTest((cur) => ({ ...cur, target: overrideTarget, node_uuid: nodeUUID }));
+    }
+    setRouteTesting(true);
+    try {
+      const res = await call("admin:nodemgt.route.test", {
+        node_uuid: nodeUUID,
+        inbound_id: routeTest.inbound_id,
+        user_id: routeTest.user_id,
+        target,
+        port: Number.parseInt(routeTest.port || "443", 10) || 443,
+        network: routeTest.network || "tcp",
+      });
+      setRouteTestResult(res);
+    } catch (err) {
+      toast.error(nodemgtErrorMessage(err, t));
+    } finally {
+      setRouteTesting(false);
     }
   };
 
@@ -4631,7 +4673,7 @@ export default function PlusAdminPage() {
         <SubPageTabs.Root
           value={routePage}
           onValueChange={(value) => {
-            if (value === "list" || value === "geodata") setRoutePage(value);
+            if (value === "list" || value === "test" || value === "geodata") setRoutePage(value);
           }}
         >
           <AdminSheetTabs>
@@ -4639,11 +4681,228 @@ export default function PlusAdminPage() {
               <SubPageTabs.Trigger value="list">
                 <AdminTabLabel icon={<Network size={18} />}>{t("nodemgt.tab_routes")}</AdminTabLabel>
               </SubPageTabs.Trigger>
+              <SubPageTabs.Trigger value="test">
+                <AdminTabLabel icon={<Play size={18} />}>路由测试</AdminTabLabel>
+              </SubPageTabs.Trigger>
               <SubPageTabs.Trigger value="geodata">
                 <AdminTabLabel icon={<Globe size={18} />}>Geodata 规则源</AdminTabLabel>
               </SubPageTabs.Trigger>
             </SubPageTabs.List>
           </AdminSheetTabs>
+          {routePage === "test" ? (() => {
+            const activeNode = routeTest.node_uuid || nodeOptions[0]?.value || "";
+            const testInbounds: { value: string; label: string }[] = [{ value: "", label: "不限入站（仅测通用规则）" }];
+            for (const inb of inbounds) {
+              if (activeNode && str(inb.node_uuid) !== activeNode) continue;
+              testInbounds.push({ value: str(inb.id), label: `${str(inb.name)} (:${str(inb.port)})` });
+              const vtags = Array.isArray(inb.virtual_tags) ? inb.virtual_tags : [];
+              for (const tag of vtags) {
+                if (!tag) continue;
+                testInbounds.push({ value: `${str(inb.id)}#${tag}`, label: `${str(inb.name)} [${tag}] (虚拟入站)` });
+              }
+            }
+            const testUsers = [
+              { value: "", label: "不指定用户" },
+              ...users
+                .filter((u) => str(u.kind) !== "relay")
+                .map((u) => ({ value: str(u.id), label: str(u.display_name) || str(u.username) || str(u.id) })),
+            ];
+            const outColor =
+              routeTestResult?.outbound_id === "block"
+                ? "error.main"
+                : !routeTestResult?.matched || routeTestResult?.outbound_id === "direct"
+                  ? "success.main"
+                  : "primary.main";
+            return (
+              <Stack spacing={1.5} sx={{ mt: 2 }}>
+                <Paper variant="outlined" className="admin-tab-panel" sx={{ ...panelSx, p: { xs: 1.5, sm: 2 } }}>
+                  <Stack spacing={2}>
+                    <Box>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                        路由命中测试
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                        根据所选节点、入站（含虚拟入站）与用户，实时评估目标域名或 IP 最终命中哪条路由与出站（真实加载 .srs 规则集并解析域名 IP）。
+                      </Typography>
+                    </Box>
+                    <ThreeCol>
+                      <SelectField
+                        label="节点"
+                        value={activeNode}
+                        onChange={(value) => setRouteTest((cur) => ({ ...cur, node_uuid: value, inbound_id: "" }))}
+                        options={nodeOptions}
+                      />
+                      <SelectField
+                        label="入站（含虚拟入站）"
+                        value={routeTest.inbound_id}
+                        onChange={(value) => setRouteTest((cur) => ({ ...cur, inbound_id: value }))}
+                        options={testInbounds}
+                      />
+                      <SelectField
+                        label="用户（可选，同时校验入站权限）"
+                        value={routeTest.user_id}
+                        onChange={(value) => setRouteTest((cur) => ({ ...cur, user_id: value }))}
+                        options={testUsers}
+                      />
+                    </ThreeCol>
+                    <Stack direction={{ xs: "column", md: "row" }} spacing={1.25} useFlexGap sx={{ alignItems: { md: "flex-start" } }}>
+                      <TextField
+                        size="small"
+                        label="目标域名 / URL / IP"
+                        value={routeTest.target}
+                        placeholder="例如 baidu.com、https://openai.com、114.114.114.114、192.168.1.1"
+                        onChange={(e) => setRouteTest((cur) => ({ ...cur, target: e.target.value }))}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            void runRouteTest();
+                          }
+                        }}
+                        sx={{ ...settingsFieldSx, flex: 1 }}
+                      />
+                      <TextField
+                        size="small"
+                        label="端口"
+                        value={routeTest.port}
+                        onChange={(e) => setRouteTest((cur) => ({ ...cur, port: e.target.value }))}
+                        sx={{ ...settingsFieldSx, width: { xs: "100%", md: 100 } }}
+                      />
+                      <TextField
+                        select
+                        size="small"
+                        label="网络"
+                        value={routeTest.network}
+                        onChange={(e) => setRouteTest((cur) => ({ ...cur, network: e.target.value }))}
+                        sx={{ ...settingsFieldSx, width: { xs: "100%", md: 100 } }}
+                      >
+                        <MenuItem value="tcp">tcp</MenuItem>
+                        <MenuItem value="udp">udp</MenuItem>
+                      </TextField>
+                      <Button
+                        variant="contained"
+                        disabled={routeTesting}
+                        startIcon={<Play size={16} />}
+                        onClick={() => void runRouteTest()}
+                        sx={{ height: 40, px: 2.5, flexShrink: 0 }}
+                      >
+                        {routeTesting ? "测试中..." : "开始测试"}
+                      </Button>
+                    </Stack>
+                    <Stack direction="row" spacing={0.75} useFlexGap sx={{ flexWrap: "wrap", alignItems: "center" }}>
+                      <Typography variant="caption" color="text.secondary">快捷测试：</Typography>
+                      {["baidu.com", "google.com", "api.openai.com", "114.114.114.114", "1.1.1.1", "192.168.1.1"].map((sample) => (
+                        <Chip
+                          key={sample}
+                          size="small"
+                          variant="outlined"
+                          clickable
+                          label={sample}
+                          onClick={() => void runRouteTest(sample)}
+                        />
+                      ))}
+                    </Stack>
+                  </Stack>
+                </Paper>
+
+                {routeTestResult ? (
+                  <Paper variant="outlined" className="admin-tab-panel" sx={{ ...panelSx, p: { xs: 1.5, sm: 2 }, borderColor: outColor }}>
+                    <Stack spacing={1.5}>
+                      <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} useFlexGap sx={{ alignItems: { sm: "center" }, justifyContent: "space-between" }}>
+                        <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: "center", flexWrap: "wrap" }}>
+                          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                            最终出站：
+                          </Typography>
+                          <Chip
+                            size="small"
+                            color={
+                              routeTestResult.outbound_id === "block"
+                                ? "error"
+                                : !routeTestResult.matched || routeTestResult.outbound_id === "direct"
+                                  ? "success"
+                                  : "primary"
+                            }
+                            label={routeTestResult.outbound_name || routeTestResult.outbound_id || "direct"}
+                            sx={{ fontWeight: 600 }}
+                          />
+                          {routeTestResult.matched_route ? (
+                            <Typography variant="body2" color="text.secondary">
+                              命中路由：<strong>{routeTestResult.matched_route}</strong>
+                            </Typography>
+                          ) : null}
+                        </Stack>
+                        <Typography variant="caption" color="text.secondary">
+                          {routeTestResult.domain ? `域名: ${routeTestResult.domain}` : `IP: ${routeTestResult.input_ip}`} · {routeTestResult.network}:{routeTestResult.port}
+                        </Typography>
+                      </Stack>
+
+                      <Typography variant="body2" color="text.secondary">
+                        判定原因：{routeTestResult.matched_reason}
+                      </Typography>
+
+                      {Array.isArray(routeTestResult.resolved_ips) && routeTestResult.resolved_ips.length > 0 ? (
+                        <Typography variant="caption" color="text.secondary" sx={{ fontFamily: "monospace" }}>
+                          DNS 解析 IP：{routeTestResult.resolved_ips.join(", ")}
+                        </Typography>
+                      ) : null}
+
+                      {routeTestResult.user_note ? (
+                        <SettingsAlert severity={routeTestResult.user_authorized === false ? "warning" : "info"}>
+                          {routeTestResult.user_note}
+                        </SettingsAlert>
+                      ) : null}
+
+                      {Array.isArray(routeTestResult.warnings) && routeTestResult.warnings.length > 0 ? (
+                        <SettingsAlert severity="warning">
+                          {routeTestResult.warnings.join("；")}
+                        </SettingsAlert>
+                      ) : null}
+
+                      {Array.isArray(routeTestResult.trace) && routeTestResult.trace.length > 0 ? (
+                        <Box sx={{ mt: 0.5 }}>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.75, fontWeight: 600 }}>
+                            逐条规则评估轨迹（按优先级从小到大）：
+                          </Typography>
+                          <Stack spacing={0.75}>
+                            {routeTestResult.trace.map((item: any, idx: number) => (
+                              <Box
+                                key={`${item.route_id}-${idx}`}
+                                sx={{
+                                  px: 1.25,
+                                  py: 0.85,
+                                  borderRadius: 1,
+                                  bgcolor: item.route_id === routeTestResult.matched_route_id ? "action.selected" : "action.hover",
+                                  display: "flex",
+                                  flexWrap: "wrap",
+                                  alignItems: "center",
+                                  gap: 1,
+                                  justifyContent: "space-between",
+                                }}
+                              >
+                                <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: "center", flexWrap: "wrap" }}>
+                                  <Chip
+                                    size="small"
+                                    color={item.route_id === routeTestResult.matched_route_id ? "primary" : item.matched ? "default" : "default"}
+                                    variant={item.route_id === routeTestResult.matched_route_id ? "filled" : "outlined"}
+                                    label={item.route_id === routeTestResult.matched_route_id ? "生效命中" : item.matched ? "次序匹配" : "未命中"}
+                                  />
+                                  <Typography variant="body2" sx={{ fontWeight: item.route_id === routeTestResult.matched_route_id ? 600 : 400 }}>
+                                    [{item.priority}] {item.route_name} → {item.outbound_name}
+                                  </Typography>
+                                </Stack>
+                                <Typography variant="caption" color="text.secondary">
+                                  {item.reason}
+                                </Typography>
+                              </Box>
+                            ))}
+                          </Stack>
+                        </Box>
+                      ) : null}
+                    </Stack>
+                  </Paper>
+                ) : null}
+              </Stack>
+            );
+          })() : null}
           {routePage === "geodata" ? (
             <Stack spacing={1.5} sx={{ mt: 2 }}>
               <Paper variant="outlined" className="admin-tab-panel" sx={{ ...panelSx, p: { xs: 1.5, sm: 2 } }}>
@@ -4791,7 +5050,7 @@ export default function PlusAdminPage() {
           ) : null}
         </SubPageTabs.Root>
       ) : null}
-      {tab === "stats" || (tab === "subscriptions" && (subPage === "access" || subPage === "templates")) || (tab === "certs" && certPage === "issuer") || (tab === "routes" && routePage === "geodata") ? null : (
+      {tab === "stats" || (tab === "subscriptions" && (subPage === "access" || subPage === "templates")) || (tab === "certs" && certPage === "issuer") || (tab === "routes" && (routePage === "geodata" || routePage === "test")) ? null : (
       <AdminListShell>
           <AdminListFiltersBar>
             <Stack direction="row" spacing={1.5} useFlexGap sx={{ flexWrap: { xs: "wrap", md: "nowrap" }, alignItems: "center" }}>
